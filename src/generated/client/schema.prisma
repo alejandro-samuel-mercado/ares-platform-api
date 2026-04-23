@@ -1,0 +1,249 @@
+// Prisma Schema — Plataforma Ares
+// Base de datos: SQLite (dev) / PostgreSQL (producción)
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// ──────────────────────────────────────────
+/// Modelo: Vendor
+/// Representa a un vendedor/revendedor registrado en la plataforma.
+/// Cada vendor opera en un espacio aislado por su ID (multi-tenant).
+/// ──────────────────────────────────────────
+model Vendor {
+  id                 String   @id @default(cuid())
+  nombre             String
+  alias              String   @unique
+  telefono           String   @unique
+  password_hash      String
+  logo_url           String?
+  logo_cloudinary_id String?
+  whatsapp           String?
+  plan_id            String
+  fecha_registro     DateTime @default(now())
+  fecha_vencimiento  DateTime
+  status             String   @default("ACTIVE") // ACTIVE | SUSPENDED | EXPIRED | GUEST
+  rating             Float    @default(5.0)
+  biografia          String? // Descripción comercial para el marketplace
+  role               String   @default("VENDOR") // SUPERADMIN | VENDOR | GUEST
+
+  plan                Plan               @relation(fields: [plan_id], references: [id])
+  mis_servicios       MiServicio[]
+  pedidos             Pedido[]
+  pagos               Pago[]
+  servicios_aportados ServicioBase[]     @relation("ServiciosAportados")
+  clicks_marketplace  ClickMarketplace[]
+}
+
+/// ──────────────────────────────────────────
+/// Modelo: Plan
+/// Define los planes de membresía disponibles con sus límites y features.
+/// ──────────────────────────────────────────
+model Plan {
+  id                    String  @id @default(cuid())
+  nombre                String
+  precio                Float
+  dias                  Int
+  tipo                  String  @default("SOLO_APP") // COMBO_IPTV | SOLO_APP
+  limite_servicios      Int? // null = ilimitado
+  texto_limite          String? // Ej: "Aplica comisión del 10% por venta generada"
+  pedidos_automaticos   Boolean @default(false)
+  enlace_publico        Boolean @default(false)
+  marketplace_proveedor Boolean @default(false)
+  activo                Boolean @default(true)
+
+  vendors Vendor[]
+  pagos   Pago[]
+}
+
+/// ──────────────────────────────────────────
+/// Modelo: Estreno
+/// Feed de noticias de estrenos de series/pelis.
+/// El admin publica, el vendedor lo ve en su home.
+/// ──────────────────────────────────────────
+model Estreno {
+  id            String    @id @default(cuid())
+  titulo        String
+  descripcion   String?
+  plataforma    String // NETFLIX | DISNEY | HBO | AMAZON | OTHER
+  fecha_estreno DateTime?
+  imagen_url    String?
+  activo        Boolean   @default(true)
+  creado_en     DateTime  @default(now())
+}
+
+/// ──────────────────────────────────────────
+/// Modelo: ServicioBase
+/// Catálogo maestro de servicios (Netflix, Disney+, IPTV, etc.)
+/// que los vendedores pueden activar en su catálogo personal.
+/// ──────────────────────────────────────────
+model ServicioBase {
+  id               String  @id @default(cuid())
+  nombre           String
+  logo_url         String
+  descripcion_base String
+  precio_sugerido  Float
+  categoria        String  @default("STREAMING") // STREAMING | IPTV | OTRO
+  es_iptv_propio   Boolean @default(false)
+  estado_actual    String  @default("VERDE") // VERDE | AMARILLO | ROJO
+  nota_estado      String?
+
+  // -- Campos de Marketplace (Para proveedores externos) --
+  proveedor_id      String?
+  comision_pct      Float   @default(10.0)
+  estado_aprobacion String  @default("APROBADO") // PENDIENTE | APROBADO | RECHAZADO
+
+  activo Boolean @default(true)
+
+  mis_servicios MiServicio[]
+  proveedor     Vendor?            @relation("ServiciosAportados", fields: [proveedor_id], references: [id])
+  clicks        ClickMarketplace[]
+  imagenes      Imagen[]
+}
+
+/// ──────────────────────────────────────────
+/// Modelo: MiServicio
+/// Relación N:N entre Vendor y ServicioBase.
+/// El vendedor activa un servicio y le pone su precio de venta.
+/// ──────────────────────────────────────────
+model MiServicio {
+  id           String   @id @default(cuid())
+  vendor_id    String
+  servicio_id  String
+  precio_venta Float
+  activo       Boolean  @default(true)
+  creado_en    DateTime @default(now())
+
+  vendor   Vendor       @relation(fields: [vendor_id], references: [id])
+  servicio ServicioBase @relation(fields: [servicio_id], references: [id])
+
+  @@unique([vendor_id, servicio_id])
+}
+
+/// ──────────────────────────────────────────
+/// Modelo: Imagen
+/// Banco de imágenes promocionales subidas por el admin.
+/// La marca de agua se aplica al momento del download, no del upload.
+/// ──────────────────────────────────────────
+model Imagen {
+  id        String   @id @default(cuid())
+  titulo    String
+  public_id String // Cloudinary public_id
+  url_base  String
+  etiquetas String // JSON array serializado: ["Netflix", "Estreno"]
+  categoria String   @default("FLYER") // FLYER | ESTRENO | PROMO | PARTIDO
+  activo    Boolean  @default(true)
+  creado_en DateTime @default(now())
+
+  // Relación con ServicioBase (opcional)
+  servicio_id String?
+  servicio    ServicioBase? @relation(fields: [servicio_id], references: [id])
+}
+
+/// ──────────────────────────────────────────
+/// Modelo: Partido
+/// Guía TV — partidos con horarios y canales.
+/// Puede disparar notificación push a vendedores Pro.
+/// ──────────────────────────────────────────
+model Partido {
+  id            String   @id @default(cuid())
+  fecha         DateTime
+  hora          String
+  equipo_local  String
+  equipo_visita String
+  logo_local    String?
+  logo_visita   String?
+  canal         String
+  liga          String?
+  requiere_iptv Boolean  @default(false)
+  push_enviado  Boolean  @default(false)
+  activo        Boolean  @default(true)
+}
+
+/// ──────────────────────────────────────────
+/// Modelo: MensajeRapido
+/// Mensajes precargados con variables dinámicas para que los
+/// vendedores los copien y envíen a sus clientes por WhatsApp.
+/// ──────────────────────────────────────────
+model MensajeRapido {
+  id       String  @id @default(cuid())
+  titulo   String
+  template String
+  orden    Int
+  activo   Boolean @default(true)
+}
+
+/// ──────────────────────────────────────────
+/// Modelo: Pedido
+/// Pedidos automáticos (solo Plan Pro).
+/// El vendedor solicita credenciales y el admin las asigna.
+/// ──────────────────────────────────────────
+model Pedido {
+  id          String   @id @default(cuid())
+  vendor_id   String
+  servicio_id String
+  notas       String?
+  status      String   @default("PENDIENTE") // PENDIENTE | EN_PROCESO | COMPLETADO | CANCELADO
+  creado_en   DateTime @default(now())
+
+  vendor Vendor @relation(fields: [vendor_id], references: [id])
+}
+
+/// ──────────────────────────────────────────
+/// Modelo: Pago
+/// Registro de pagos manuales. El admin confirma o rechaza.
+/// Al confirmar, se extiende la suscripción del vendor.
+/// ──────────────────────────────────────────
+model Pago {
+  id              String    @id @default(cuid())
+  vendor_id       String
+  monto           Float
+  plan_id         String
+  comprobante_url String?
+  status          String    @default("PENDIENTE") // PENDIENTE | CONFIRMADO | RECHAZADO
+  confirmado_en   DateTime?
+  notas_admin     String?
+  creado_en       DateTime  @default(now())
+
+  vendor Vendor @relation(fields: [vendor_id], references: [id])
+  plan   Plan   @relation(fields: [plan_id], references: [id])
+}
+
+/// ──────────────────────────────────────────
+/// Modelo: AjustesPlataforma
+/// Configuración global: QR de cobro, texto legal, branding.
+/// Solo existe 1 registro (singleton).
+/// ──────────────────────────────────────────
+model AjustesPlataforma {
+  id                String  @id @default("1")
+  qr_cobro_url      String  @default("")
+  tigo_money_numero String  @default("")
+  texto_legal       String  @default("")
+  nombre_plataforma String  @default("Ares")
+  logo_url          String?
+  noticia_global    String  @default("Bienvenido a Ares v2. Revisa los nuevos partidos.")
+  whatsapp_soporte  String  @default("")
+}
+
+/// ──────────────────────────────────────────
+/// Modelo: ClickMarketplace (Analítica Comercial)
+/// Rastrea intenciones de compra de Vendedores sobre
+/// servicios ofrecidos por Proveedores en el Marketplace.
+/// ──────────────────────────────────────────
+model ClickMarketplace {
+  id           String @id @default(cuid())
+  vendor_id    String
+  servicio_id  String
+  proveedor_id String
+
+  creado_en DateTime @default(now())
+
+  vendor   Vendor       @relation(fields: [vendor_id], references: [id], onDelete: Cascade)
+  servicio ServicioBase @relation(fields: [servicio_id], references: [id], onDelete: Cascade)
+}
