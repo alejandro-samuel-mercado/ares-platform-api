@@ -248,11 +248,6 @@ router.get('/imagen/:id/download', async (req: Request, res: Response): Promise<
     const vendor = req.vendor!;
     const { id } = req.params as { id: string };
 
-    // DEBUG LOG
-    const fs = await import('fs');
-    const logMsg = `[WATERMARK DEBUG] Date: ${new Date().toISOString()} | VendorID: ${vendor.id} | Alias: ${vendor.alias} | Nombre: ${vendor.nombre} | Role: ${vendor.role}\n`;
-    fs.appendFileSync('/tmp/ares_debug_admin.log', logMsg);
-
     const imagen = await prisma.imagen.findFirst({
       where: { id: id as string, activo: true },
     });

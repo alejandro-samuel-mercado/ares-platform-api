@@ -15,6 +15,7 @@
 
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 
 import authRoutes from './routes/auth';
 import vendorRoutes from './routes/vendor';
@@ -25,6 +26,9 @@ import backupRoutes from './routes/backup';
 import { authMiddleware } from './middleware/auth';
 import { subscriptionMiddleware } from './middleware/subscription';
 import { roleGuard } from './middleware/roleGuard';
+import { upload, getFileUrl } from './lib/cloudinary';
+import prisma from './lib/prisma';
+import { OneSignal } from './lib/onesignal';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -35,7 +39,6 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
-import path from 'path';
 
 // Static assets (for local upload fallback)
 app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
@@ -88,10 +91,6 @@ app.use('/api/admin',
   roleGuard('SUPERADMIN'),
   adminRoutes
 );
-
-import { upload } from './lib/cloudinary';
-import prisma from './lib/prisma';
-import { OneSignal } from './lib/onesignal';
 
 // ─── Rutas Vendor (auth + suscripción) ────────────────────────
 // Nota: /api/pagos/comprobante se exime del subscriptionMiddleware
