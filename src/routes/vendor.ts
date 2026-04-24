@@ -448,6 +448,8 @@ router.get('/perfil', async (req: Request, res: Response): Promise<void> => {
       status: vendor.status,
       rating: vendor.rating,
       biografia: vendor.biografia,
+      whatsapp_api_enabled: vendor.whatsapp_api_enabled,
+      whatsapp_api_token: vendor.whatsapp_api_token,
       fecha_registro: vendor.fecha_registro,
       fecha_vencimiento: vendor.fecha_vencimiento,
     });
@@ -463,7 +465,10 @@ router.get('/perfil', async (req: Request, res: Response): Promise<void> => {
 router.put('/perfil', async (req: Request, res: Response): Promise<void> => {
   try {
     const vendor = req.vendor!;
-    const { whatsapp, alias, nombre, logo_url, logo_cloudinary_id, biografia } = req.body;
+    const { 
+      whatsapp, alias, nombre, logo_url, logo_cloudinary_id, biografia,
+      whatsapp_api_enabled, whatsapp_api_token 
+    } = req.body;
 
     // Verificar que el nuevo alias no esté en uso
     if (alias && alias !== vendor.alias) {
@@ -485,6 +490,8 @@ router.put('/perfil', async (req: Request, res: Response): Promise<void> => {
         ...(logo_url !== undefined && { logo_url }),
         ...(logo_cloudinary_id !== undefined && { logo_cloudinary_id }),
         ...(biografia !== undefined && { biografia }),
+        ...(whatsapp_api_enabled !== undefined && { whatsapp_api_enabled }),
+        ...(whatsapp_api_token !== undefined && { whatsapp_api_token }),
       },
       include: { plan: true },
     });
@@ -501,6 +508,8 @@ router.put('/perfil', async (req: Request, res: Response): Promise<void> => {
         texto_limite: updated.plan.texto_limite,
         biografia: updated.biografia,
         rating: updated.rating,
+        whatsapp_api_enabled: updated.whatsapp_api_enabled,
+        whatsapp_api_token: updated.whatsapp_api_token,
       },
     });
   } catch (error) {

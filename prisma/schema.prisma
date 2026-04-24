@@ -24,6 +24,8 @@ model Vendor {
   logo_url           String?
   logo_cloudinary_id String?
   whatsapp           String?
+  whatsapp_api_enabled Boolean  @default(false)
+  whatsapp_api_token   String?
   plan_id            String
   fecha_registro     DateTime @default(now())
   fecha_vencimiento  DateTime
