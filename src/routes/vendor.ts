@@ -211,17 +211,35 @@ router.delete('/mis_servicios/:id', async (req: Request, res: Response): Promise
 
 /**
  * GET /api/imagenes
- * Lista imágenes activas, con filtro opcional por etiqueta.
- * Query param: ?etiqueta=Netflix
+ * Lista imágenes activas filtradas por el catálogo del vendedor.
+ * Solo muestra imágenes vinculadas a servicios que el vendedor tiene activos,
+ * o imágenes globales (sin servicio_id).
+ * Query param: ?etiqueta=Netflix (filtro adicional por etiqueta)
  */
 router.get('/imagenes', async (req: Request, res: Response): Promise<void> => {
   try {
     const { etiqueta } = req.query as { etiqueta?: string };
+    const vendorId = req.vendor!.id;
 
+    // Obtener los IDs de servicios activos del vendedor
+    const misServicios = await prisma.miServicio.findMany({
+      where: { vendor_id: vendorId, activo: true },
+      select: { servicio_id: true },
+    });
+    const servicioIds = misServicios.map(s => s.servicio_id);
+
+    // Buscar imágenes: globales (sin servicio) + las de sus servicios activos
     const imagenes = await prisma.imagen.findMany({
       where: {
         activo: true,
         ...(etiqueta ? { etiquetas: { contains: etiqueta as string } } : {}),
+        OR: [
+          { servicio_id: null },                              // Imágenes globales
+          { servicio_id: { in: servicioIds } },                // Imágenes de su catálogo
+        ],
+      },
+      include: {
+        servicio: { select: { id: true, nombre: true, logo_url: true } }
       },
       orderBy: { creado_en: 'desc' },
     });
@@ -396,6 +414,7 @@ router.get('/pedidos', planGuard('Pro'), async (req: Request, res: Response): Pr
   try {
     const pedidos = await prisma.pedido.findMany({
       where: { vendor_id: req.vendor!.id },
+      include: { servicio: { select: { nombre: true, logo_url: true, categoria: true } } },
       orderBy: { creado_en: 'desc' },
     });
     res.json(pedidos);
@@ -616,12 +635,14 @@ router.get('/marketplace', async (_req: Request, res: Response): Promise<void> =
 
 /**
  * POST /api/marketplace/propose
- * Permite a un Proveedor proponer un nuevo ServicioBase al Marketplace.
+ * Permite a un vendor con Plan Proveedor proponer un nuevo ServicioBase al Marketplace.
+ * El plan "Proveedor" habilita marketplace_proveedor=true.
  */
 router.post('/marketplace/propose', async (req: Request, res: Response): Promise<void> => {
   try {
-    if (req.vendor!.role !== 'PROVEEDOR') {
-      res.status(403).json({ error: 'Solo los PROVEEDORES pueden proponer servicios' });
+    // Verificar por Plan, no por rol
+    if (!req.vendor!.plan.marketplace_proveedor) {
+      res.status(403).json({ error: 'Tu plan no incluye la funcionalidad de Marketplace Proveedor' });
       return;
     }
 

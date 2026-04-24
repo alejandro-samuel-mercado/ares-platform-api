@@ -104,6 +104,7 @@ model ServicioBase {
   proveedor     Vendor?        @relation("ServiciosAportados", fields: [proveedor_id], references: [id])
   clicks        ClickMarketplace[]
   imagenes      Imagen[]
+  pedidos       Pedido[]
 }
 
 /// ──────────────────────────────────────────
@@ -184,14 +185,17 @@ model MensajeRapido {
 /// El vendedor solicita credenciales y el admin las asigna.
 /// ──────────────────────────────────────────
 model Pedido {
-  id          String   @id @default(cuid())
-  vendor_id   String
-  servicio_id String
-  notas       String?
-  status      String   @default("PENDIENTE") // PENDIENTE | EN_PROCESO | COMPLETADO | CANCELADO
-  creado_en   DateTime @default(now())
+  id               String    @id @default(cuid())
+  vendor_id        String
+  servicio_id      String
+  notas            String?
+  status           String    @default("PENDIENTE") // PENDIENTE | EN_PROCESO | COMPLETADO | CANCELADO
+  respuesta_admin  String?   // Respuesta del admin (credenciales, instrucciones, etc.)
+  respondido_en    DateTime? // Timestamp de cuándo se respondió
+  creado_en        DateTime  @default(now())
 
   vendor Vendor @relation(fields: [vendor_id], references: [id])
+  servicio ServicioBase? @relation(fields: [servicio_id], references: [id])
 }
 
 /// ──────────────────────────────────────────

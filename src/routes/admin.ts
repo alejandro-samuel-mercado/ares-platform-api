@@ -496,92 +496,9 @@ router.delete('/servicios/:id', async (req: Request, res: Response): Promise<voi
 });
 
 // ═══════════════════════════════════════════
-// GESTIÓN DE MARKET SERVICES (Alias / Wrapper)
+// NOTA: Rutas /market-services eliminadas.
+// Usar /api/admin/servicios para todo el CRUD de ServicioBase.
 // ═══════════════════════════════════════════
-
-router.get('/market-services', async (_req: Request, res: Response): Promise<void> => {
-  try {
-    const servicios = await prisma.servicioBase.findMany({
-      orderBy: { nombre: 'asc' },
-    });
-    const mapped = servicios.map(s => ({
-      id: s.id,
-      nombre: s.nombre,
-      descripcion: s.descripcion_base,
-      precio: s.precio_sugerido,
-      categoria: s.categoria,
-      logo_url: s.logo_url,
-      activo: s.activo,
-      fecha_creacion: new Date().toISOString()
-    }));
-    res.json(mapped);
-  } catch (error) {
-    res.status(500).json({ error: 'Error obteniendo market services' });
-  }
-});
-
-router.post('/market-services', upload.single('logo'), async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { nombre, descripcion, precio, categoria, activo } = req.body;
-    const file = req.file as any;
-    const logo_url = file ? getFileUrl(file) : (req.body.logo_url || '');
-
-    const servicio = await prisma.servicioBase.create({
-      data: {
-        nombre,
-        descripcion_base: descripcion || '',
-        precio_sugerido: parseFloat(precio || '0'),
-        categoria: categoria || 'STREAMING',
-        activo: activo === 'true' || activo === true,
-        logo_url,
-      } as any
-    });
-    res.status(201).json(servicio);
-  } catch (error) {
-    res.status(500).json({ error: 'Error creando market service' });
-  }
-});
-
-router.put('/market-services/:id', upload.single('logo'), async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params as { id: string };
-    const { nombre, descripcion, precio, categoria, activo } = req.body;
-    const file = req.file as any;
-    
-    const dataToUpdate: any = {};
-    if (nombre) dataToUpdate.nombre = nombre;
-    if (descripcion) dataToUpdate.descripcion_base = descripcion;
-    if (precio) dataToUpdate.precio_sugerido = parseFloat(precio);
-    if (categoria) dataToUpdate.categoria = categoria;
-    if (activo !== undefined) dataToUpdate.activo = activo === 'true' || activo === true;
-    
-    if (file) {
-      dataToUpdate.logo_url = file.path;
-    } else if (req.body.logo_url) {
-      dataToUpdate.logo_url = req.body.logo_url;
-    }
-
-    const servicio = await prisma.servicioBase.update({
-      where: { id },
-      data: dataToUpdate,
-    });
-    res.json(servicio);
-  } catch (error) {
-    res.status(500).json({ error: 'Error actualizando market service' });
-  }
-});
-
-router.delete('/market-services/:id', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params as { id: string };
-    await prisma.servicioBase.delete({
-      where: { id }
-    });
-    res.json({ message: 'Market service eliminado' });
-  } catch (error) {
-    res.status(500).json({ error: 'Error eliminando market service' });
-  }
-});
 
 // ═══════════════════════════════════════════
 // GESTIÓN DE IMÁGENES
@@ -1155,7 +1072,8 @@ router.get('/pedidos', async (_req: Request, res: Response): Promise<void> => {
   try {
     const pedidos = await prisma.pedido.findMany({
       include: { 
-        vendor: { select: { nombre: true, alias: true, logo_url: true } }
+        vendor: { select: { nombre: true, alias: true, logo_url: true } },
+        servicio: { select: { nombre: true, logo_url: true, categoria: true } }
       },
       orderBy: { creado_en: 'desc' }
     });
@@ -1167,30 +1085,39 @@ router.get('/pedidos', async (_req: Request, res: Response): Promise<void> => {
 
 /**
  * PATCH /api/admin/pedidos/:id
- * Actualiza el estado de un pedido.
+ * Actualiza el estado de un pedido y permite enviar respuesta/credenciales.
  */
 router.patch('/pedidos/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params as { id: string };
-    const { status, notas } = req.body;
+    const { status, notas, respuesta_admin } = req.body;
+
+    const updateData: any = {};
+    if (status) updateData.status = status;
+    if (notas !== undefined) updateData.notas = notas;
+    if (respuesta_admin !== undefined) {
+      updateData.respuesta_admin = respuesta_admin;
+      updateData.respondido_en = new Date();
+    }
 
     const pedido = await prisma.pedido.update({
       where: { id },
-      data: { status, notas }, // Usamos notas para feedback
+      data: updateData,
       include: { vendor: true }
     });
 
     // Notificar al vendedor sobre el cambio de estado de su pedido en su App
     try {
-      const { OneSignal } = await import('../lib/onesignal');
       let titulo = '📦 Actualización de Pedido';
       let mensaje = `Tu pedido ha cambiado a estado: ${status}.`;
       if (status === 'COMPLETADO') {
         titulo = '✅ Pedido Completado';
-        mensaje = `Tu pedido ha sido completado exitosamente. ${notas ? `Notas: ${notas}` : ''}`;
-      } else if (status === 'RECHAZADO') {
-        titulo = '❌ Pedido Rechazado';
-        mensaje = `Tu pedido ha sido rechazado. ${notas ? `Motivo: ${notas}` : ''}`;
+        mensaje = respuesta_admin
+          ? `¡Pedido completado! Revisa la respuesta del admin en tus pedidos.`
+          : `Tu pedido ha sido completado exitosamente.`;
+      } else if (status === 'CANCELADO') {
+        titulo = '❌ Pedido Cancelado';
+        mensaje = `Tu pedido ha sido cancelado. ${notas ? `Motivo: ${notas}` : ''}`;
       }
       
       await OneSignal.sendSystemNotification(pedido.vendor_id, titulo, mensaje);
