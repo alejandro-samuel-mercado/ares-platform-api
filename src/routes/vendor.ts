@@ -66,24 +66,18 @@ router.get('/mis_servicios', async (req: Request, res: Response): Promise<void> 
 
 /**
  * POST /api/mis_servicios
- * Activa un servicio en el catálogo del vendedor con precio personalizado.
- *
- * Reglas de negocio:
- * - Verifica que no exceda el límite del plan (5 para Vendedor/Gratis)
- * - Verifica que el servicio no esté ya activado
- * - Verifica que el servicio base exista y esté activo
+ * Activa un servicio en el catálogo del vendedor (sin precio, solo selección).
  */
 router.post('/mis_servicios', async (req: Request, res: Response): Promise<void> => {
   try {
     const vendor = req.vendor!;
-    const { servicio_id, precio_venta } = req.body;
+    const { servicio_id } = req.body;
 
-    if (!servicio_id || precio_venta === undefined || precio_venta === null) {
-      res.status(400).json({ error: 'servicio_id y precio_venta son requeridos' });
+    if (!servicio_id) {
+      res.status(400).json({ error: 'servicio_id es requerido' });
       return;
     }
 
-    // Verificar que el servicio base existe y está activo
     const servicioBase = await prisma.servicioBase.findFirst({
       where: { id: servicio_id, activo: true },
     });
@@ -111,17 +105,15 @@ router.post('/mis_servicios', async (req: Request, res: Response): Promise<void>
       }
     }
 
-    // Verificar que no esté ya activado
     const existing = await prisma.miServicio.findFirst({
       where: { vendor_id: vendor.id, servicio_id },
     });
 
     if (existing) {
-      // Si existe pero está desactivado, reactivar
       if (!existing.activo) {
         const updated = await prisma.miServicio.update({
           where: { id: existing.id },
-          data: { activo: true, precio_venta },
+          data: { activo: true },
           include: { servicio: true },
         });
         res.json(updated);
@@ -132,11 +124,7 @@ router.post('/mis_servicios', async (req: Request, res: Response): Promise<void>
     }
 
     const miServicio = await prisma.miServicio.create({
-      data: {
-        vendor_id: vendor.id,
-        servicio_id,
-        precio_venta,
-      },
+      data: { vendor_id: vendor.id, servicio_id },
       include: { servicio: true },
     });
 
@@ -144,36 +132,6 @@ router.post('/mis_servicios', async (req: Request, res: Response): Promise<void>
   } catch (error) {
     console.error('Error activando servicio:', error);
     res.status(500).json({ error: 'Error activando servicio' });
-  }
-});
-
-/**
- * PUT /api/mis_servicios/:id
- * Actualiza el precio de venta de un servicio del vendedor.
- */
-router.put('/mis_servicios/:id', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params as { id: string };
-    const { precio_venta } = req.body;
-
-    const servicio = await prisma.miServicio.findFirst({
-      where: { id, vendor_id: req.vendor!.id },
-    });
-
-    if (!servicio) {
-      res.status(404).json({ error: 'Servicio no encontrado' });
-      return;
-    }
-
-    const updated = await prisma.miServicio.update({
-      where: { id: id as string },
-      data: { precio_venta },
-      include: { servicio: true },
-    });
-
-    res.json(updated);
-  } catch (error) {
-    res.status(500).json({ error: 'Error actualizando servicio' });
   }
 });
 
@@ -357,29 +315,34 @@ router.get('/partidos', async (req: Request, res: Response): Promise<void> => {
 });
 
 // ═══════════════════════════════════════════
-// PEDIDOS (Solo Plan Pro)
+// PEDIDOS — Solicitar credenciales
 // ═══════════════════════════════════════════
 
 /**
  * POST /api/pedidos
- * Crea un pedido automático (requiere Plan Pro).
+ * Crea un pedido de credenciales con cantidad y comprobante de pago.
  */
-router.post('/pedidos', planGuard('Pro'), async (req: Request, res: Response): Promise<void> => {
+router.post('/pedidos', async (req: Request, res: Response): Promise<void> => {
   try {
     const vendor = req.vendor!;
-    const { servicio_id, notas } = req.body;
+    const { servicio_id, cantidad, notas, comprobante_url } = req.body;
 
     if (!servicio_id) {
       res.status(400).json({ error: 'servicio_id es requerido' });
       return;
     }
 
+    const cantidadFinal = parseInt(cantidad) || 1;
+
     const pedido = await prisma.pedido.create({
       data: {
         vendor_id: vendor.id,
         servicio_id,
+        cantidad: cantidadFinal,
+        comprobante_url: comprobante_url || null,
         notas: notas || null,
       },
+      include: { servicio: { select: { nombre: true, precio_admin: true } } },
     });
 
     // Notificar al admin sobre nuevo pedido
@@ -388,8 +351,8 @@ router.post('/pedidos', planGuard('Pro'), async (req: Request, res: Response): P
       await OneSignal.sendNotification({
         headings: { es: '📦 Nuevo Pedido Recibido', en: '📦 New Order Received' },
         contents: { 
-          es: `El vendedor @${vendor.alias} ha realizado un nuevo pedido.`,
-          en: `Vendor @${vendor.alias} placed a new order.`
+          es: `@${vendor.alias} pidió ${cantidadFinal}x ${pedido.servicio?.nombre || 'servicio'}. Comprobante: ${comprobante_url ? 'Sí' : 'No'}.`,
+          en: `@${vendor.alias} ordered ${cantidadFinal}x. Receipt: ${comprobante_url ? 'Yes' : 'No'}.`
         },
         filters: [{ field: 'tag', key: 'role', relation: '=', value: 'SUPERADMIN' }]
       });
@@ -400,9 +363,29 @@ router.post('/pedidos', planGuard('Pro'), async (req: Request, res: Response): P
     res.status(201).json({
       message: 'Pedido creado. El administrador lo procesará pronto.',
       pedido,
+      monto_total: cantidadFinal * (pedido.servicio?.precio_admin || 0),
     });
   } catch (error) {
     res.status(500).json({ error: 'Error creando pedido' });
+  }
+});
+
+/**
+ * GET /api/mis_credenciales
+ * Lista todas las credenciales asignadas al vendor, agrupadas por servicio.
+ */
+router.get('/mis_credenciales', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const credenciales = await prisma.credencial.findMany({
+      where: { asignada_a: req.vendor!.id },
+      include: {
+        servicio: { select: { id: true, nombre: true, logo_url: true, categoria: true } },
+      },
+      orderBy: { creado_en: 'desc' },
+    });
+    res.json(credenciales);
+  } catch (error) {
+    res.status(500).json({ error: 'Error obteniendo credenciales' });
   }
 });
 

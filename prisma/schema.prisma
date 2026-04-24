@@ -1,5 +1,5 @@
-// Prisma Schema — Plataforma Ares
-// Base de datos: SQLite (dev) / PostgreSQL (producción)
+// Prisma Schema — Plataforma Ares v3
+// Base de datos: PostgreSQL (producción)
 
 generator client {
   provider = "prisma-client-js"
@@ -38,6 +38,7 @@ model Vendor {
   mis_servicios MiServicio[]
   pedidos       Pedido[]
   pagos         Pago[]
+  credenciales  Credencial[]
   servicios_aportados ServicioBase[] @relation("ServiciosAportados")
   clicks_marketplace  ClickMarketplace[]
 }
@@ -89,7 +90,8 @@ model ServicioBase {
   nombre           String
   logo_url         String
   descripcion_base String
-  precio_sugerido  Float
+  precio_sugerido  Float   // Precio de referencia (visible para vendors)
+  precio_admin     Float   @default(0) // Precio que el admin cobra al vendor por credencial
   categoria        String  @default("STREAMING") // STREAMING | IPTV | OTRO
   es_iptv_propio   Boolean @default(false)
   estado_actual    String  @default("VERDE") // VERDE | AMARILLO | ROJO
@@ -103,6 +105,7 @@ model ServicioBase {
   activo           Boolean @default(true)
 
   mis_servicios MiServicio[]
+  credenciales  Credencial[]
   proveedor     Vendor?        @relation("ServiciosAportados", fields: [proveedor_id], references: [id])
   clicks        ClickMarketplace[]
   imagenes      Imagen[]
@@ -112,13 +115,12 @@ model ServicioBase {
 /// ──────────────────────────────────────────
 /// Modelo: MiServicio
 /// Relación N:N entre Vendor y ServicioBase.
-/// El vendedor activa un servicio y le pone su precio de venta.
+/// El vendedor activa un servicio de su catálogo.
 /// ──────────────────────────────────────────
 model MiServicio {
   id           String   @id @default(cuid())
   vendor_id    String
   servicio_id  String
-  precio_venta Float
   activo       Boolean  @default(true)
   creado_en    DateTime @default(now())
 
@@ -129,9 +131,31 @@ model MiServicio {
 }
 
 /// ──────────────────────────────────────────
+/// Modelo: Credencial
+/// Cuentas (usuario/contraseña) que el admin gestiona por servicio.
+/// Se asignan a vendors cuando se aprueba un pedido.
+/// ──────────────────────────────────────────
+model Credencial {
+  id           String   @id @default(cuid())
+  servicio_id  String
+  usuario      String
+  password     String
+  perfil       String?  // "Perfil 1", "Pantalla 2", etc.
+  notas        String?  // Notas internas del admin
+  disponible   Boolean  @default(true) // false = ya asignada
+  asignada_a   String?  // vendor_id
+  pedido_id    String?  // pedido que la consumió
+  creado_en    DateTime @default(now())
+
+  servicio ServicioBase @relation(fields: [servicio_id], references: [id])
+  vendor   Vendor?      @relation(fields: [asignada_a], references: [id])
+  pedido   Pedido?      @relation(fields: [pedido_id], references: [id])
+}
+
+/// ──────────────────────────────────────────
 /// Modelo: Imagen
 /// Banco de imágenes promocionales subidas por el admin.
-/// La marca de agua se aplica al momento del download, no del upload.
+/// Categorías: FLYER | PROMO | ESTRENO | PARTIDO
 /// ──────────────────────────────────────────
 model Imagen {
   id          String   @id @default(cuid())
@@ -139,7 +163,7 @@ model Imagen {
   public_id   String // Cloudinary public_id
   url_base    String
   etiquetas   String // JSON array serializado: ["Netflix", "Estreno"]
-  categoria   String   @default("FLYER") // FLYER | ESTRENO | PROMO | PARTIDO
+  categoria   String   @default("FLYER") // FLYER | PROMO | ESTRENO | PARTIDO
   activo      Boolean  @default(true)
   creado_en   DateTime @default(now())
 
@@ -183,26 +207,29 @@ model MensajeRapido {
 
 /// ──────────────────────────────────────────
 /// Modelo: Pedido
-/// Pedidos automáticos (solo Plan Pro).
-/// El vendedor solicita credenciales y el admin las asigna.
+/// El vendedor solicita credenciales para un servicio.
+/// Incluye comprobante de pago y cantidad solicitada.
 /// ──────────────────────────────────────────
 model Pedido {
   id               String    @id @default(cuid())
   vendor_id        String
   servicio_id      String
+  cantidad         Int       @default(1)
+  comprobante_url  String?   // Foto del comprobante de pago por credenciales
   notas            String?
   status           String    @default("PENDIENTE") // PENDIENTE | EN_PROCESO | COMPLETADO | CANCELADO
-  respuesta_admin  String?   // Respuesta del admin (credenciales, instrucciones, etc.)
+  respuesta_admin  String?   // Respuesta del admin (instrucciones, etc.)
   respondido_en    DateTime? // Timestamp de cuándo se respondió
   creado_en        DateTime  @default(now())
 
-  vendor Vendor @relation(fields: [vendor_id], references: [id])
-  servicio ServicioBase? @relation(fields: [servicio_id], references: [id])
+  vendor       Vendor        @relation(fields: [vendor_id], references: [id])
+  servicio     ServicioBase? @relation(fields: [servicio_id], references: [id])
+  credenciales Credencial[]  // Credenciales asignadas a este pedido
 }
 
 /// ──────────────────────────────────────────
 /// Modelo: Pago
-/// Registro de pagos manuales. El admin confirma o rechaza.
+/// Registro de pagos de suscripción. El admin confirma o rechaza.
 /// Al confirmar, se extiende la suscripción del vendor.
 /// ──────────────────────────────────────────
 model Pago {

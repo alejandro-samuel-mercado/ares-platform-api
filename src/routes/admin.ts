@@ -20,6 +20,7 @@ import { upload, getFileUrl } from '../lib/cloudinary';
 import { OneSignal } from '../lib/onesignal';
 import fs from 'fs';
 import path from 'path';
+import bcrypt from 'bcryptjs';
 
 const router = Router();
 const LOG_FILE = '/tmp/ares_debug_admin.log';
@@ -253,7 +254,6 @@ router.put('/vendors/:id', async (req: Request, res: Response): Promise<void> =>
     if (telefono !== undefined) updateData.telefono = telefono;
     if (whatsapp !== undefined) updateData.whatsapp = whatsapp;
     if (password) {
-      const bcrypt = await import('bcryptjs');
       updateData.password_hash = await bcrypt.hash(password, 10);
     }
 
@@ -1352,4 +1352,308 @@ router.delete('/mensajes/:id', async (req: Request, res: Response): Promise<void
   }
 });
 
+// ═══════════════════════════════════════════
+// CREAR VENDEDOR MANUAL
+// ═══════════════════════════════════════════
+
+/**
+ * POST /api/admin/vendors
+ * Crea un vendedor manualmente desde el panel de admin.
+ */
+router.post('/vendors', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { nombre, alias, telefono, plan_id, password, whatsapp } = req.body;
+
+    if (!nombre || !alias || !telefono || !plan_id || !password) {
+      res.status(400).json({ error: 'nombre, alias, telefono, plan_id y password son requeridos' });
+      return;
+    }
+
+    // Verificar alias único
+    const existingAlias = await prisma.vendor.findFirst({ where: { alias: alias.toLowerCase() } });
+    if (existingAlias) {
+      res.status(409).json({ error: 'Ese alias ya está en uso' });
+      return;
+    }
+
+    // Verificar teléfono único
+    const existingPhone = await prisma.vendor.findFirst({ where: { telefono } });
+    if (existingPhone) {
+      res.status(409).json({ error: 'Ese teléfono ya está registrado' });
+      return;
+    }
+
+    const plan = await prisma.plan.findUnique({ where: { id: plan_id } });
+    if (!plan) {
+      res.status(404).json({ error: 'Plan no encontrado' });
+      return;
+    }
+
+    const password_hash = await bcrypt.hash(password, 10);
+
+    const vencimiento = new Date();
+    vencimiento.setDate(vencimiento.getDate() + plan.dias);
+
+    const vendor = await prisma.vendor.create({
+      data: {
+        nombre,
+        alias: alias.toLowerCase(),
+        telefono,
+        password_hash,
+        plan_id,
+        whatsapp: whatsapp || telefono,
+        fecha_vencimiento: vencimiento,
+        status: 'ACTIVE',
+        role: 'VENDOR',
+      },
+      include: { plan: true },
+    });
+
+    res.status(201).json({
+      message: `Vendedor ${vendor.alias} creado exitosamente`,
+      vendor: {
+        id: vendor.id,
+        nombre: vendor.nombre,
+        alias: vendor.alias,
+        telefono: vendor.telefono,
+        plan: vendor.plan.nombre,
+        fecha_vencimiento: vendor.fecha_vencimiento,
+      },
+    });
+  } catch (error) {
+    console.error('Error creando vendedor:', error);
+    res.status(500).json({ error: 'Error creando vendedor' });
+  }
+});
+
+// ═══════════════════════════════════════════
+// GESTIÓN DE CREDENCIALES
+// ═══════════════════════════════════════════
+
+/**
+ * GET /api/admin/credenciales
+ * Lista todas las credenciales. Filtro opcional: ?servicio_id=xxx&disponible=true
+ */
+router.get('/credenciales', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { servicio_id, disponible } = req.query as { servicio_id?: string; disponible?: string };
+
+    const where: any = {};
+    if (servicio_id) where.servicio_id = servicio_id;
+    if (disponible !== undefined) where.disponible = disponible === 'true';
+
+    const credenciales = await prisma.credencial.findMany({
+      where,
+      include: {
+        servicio: { select: { nombre: true, logo_url: true } },
+        vendor: { select: { nombre: true, alias: true } },
+      },
+      orderBy: { creado_en: 'desc' },
+    });
+
+    res.json(credenciales);
+  } catch (error) {
+    res.status(500).json({ error: 'Error obteniendo credenciales' });
+  }
+});
+
+/**
+ * POST /api/admin/credenciales
+ * Crea una nueva credencial para un servicio.
+ */
+router.post('/credenciales', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { servicio_id, usuario, password, perfil, notas } = req.body;
+
+    if (!servicio_id || !usuario || !password) {
+      res.status(400).json({ error: 'servicio_id, usuario y password son requeridos' });
+      return;
+    }
+
+    const credencial = await prisma.credencial.create({
+      data: { servicio_id, usuario, password, perfil: perfil || null, notas: notas || null },
+      include: { servicio: { select: { nombre: true } } },
+    });
+
+    res.status(201).json(credencial);
+  } catch (error) {
+    res.status(500).json({ error: 'Error creando credencial' });
+  }
+});
+
+/**
+ * POST /api/admin/credenciales/bulk
+ * Crea múltiples credenciales de una vez.
+ */
+router.post('/credenciales/bulk', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { credenciales } = req.body;
+    // credenciales: [{ servicio_id, usuario, password, perfil?, notas? }]
+
+    if (!Array.isArray(credenciales) || credenciales.length === 0) {
+      res.status(400).json({ error: 'Se requiere un array de credenciales' });
+      return;
+    }
+
+    const created = await prisma.credencial.createMany({
+      data: credenciales.map((c: any) => ({
+        servicio_id: c.servicio_id,
+        usuario: c.usuario,
+        password: c.password,
+        perfil: c.perfil || null,
+        notas: c.notas || null,
+      })),
+    });
+
+    res.status(201).json({ message: `${created.count} credenciales creadas`, count: created.count });
+  } catch (error) {
+    res.status(500).json({ error: 'Error creando credenciales' });
+  }
+});
+
+/**
+ * PUT /api/admin/credenciales/:id
+ * Edita una credencial existente.
+ */
+router.put('/credenciales/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params as { id: string };
+    const { usuario, password, perfil, notas, disponible } = req.body;
+
+    const updateData: any = {};
+    if (usuario !== undefined) updateData.usuario = usuario;
+    if (password !== undefined) updateData.password = password;
+    if (perfil !== undefined) updateData.perfil = perfil;
+    if (notas !== undefined) updateData.notas = notas;
+    if (disponible !== undefined) updateData.disponible = disponible;
+
+    const credencial = await prisma.credencial.update({
+      where: { id },
+      data: updateData,
+    });
+
+    res.json(credencial);
+  } catch (error) {
+    res.status(500).json({ error: 'Error actualizando credencial' });
+  }
+});
+
+/**
+ * DELETE /api/admin/credenciales/:id
+ * Elimina una credencial.
+ */
+router.delete('/credenciales/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params as { id: string };
+    await prisma.credencial.delete({ where: { id } });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: 'Error eliminando credencial' });
+  }
+});
+
+/**
+ * POST /api/admin/credenciales/:id/liberar
+ * Libera una credencial (marca como disponible, desvincula del vendor).
+ */
+router.post('/credenciales/:id/liberar', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params as { id: string };
+    const credencial = await prisma.credencial.update({
+      where: { id },
+      data: { disponible: true, asignada_a: null, pedido_id: null },
+    });
+    res.json({ message: 'Credencial liberada', credencial });
+  } catch (error) {
+    res.status(500).json({ error: 'Error liberando credencial' });
+  }
+});
+
+/**
+ * POST /api/admin/pedidos/:id/aprobar
+ * Aprueba un pedido y asigna N credenciales disponibles al vendor automáticamente.
+ */
+router.post('/pedidos/:id/aprobar', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params as { id: string };
+    const { respuesta_admin } = req.body;
+
+    // Obtener el pedido
+    const pedido = await prisma.pedido.findUnique({
+      where: { id },
+      include: { servicio: true, vendor: true },
+    });
+
+    if (!pedido) {
+      res.status(404).json({ error: 'Pedido no encontrado' });
+      return;
+    }
+
+    // Buscar credenciales disponibles para este servicio
+    const disponibles = await prisma.credencial.findMany({
+      where: { servicio_id: pedido.servicio_id, disponible: true },
+      take: pedido.cantidad,
+    });
+
+    if (disponibles.length < pedido.cantidad) {
+      res.status(400).json({
+        error: `Solo hay ${disponibles.length} credenciales disponibles, se necesitan ${pedido.cantidad}`,
+        disponibles: disponibles.length,
+        requeridas: pedido.cantidad,
+      });
+      return;
+    }
+
+    // Asignar las credenciales
+    const credIds = disponibles.map(c => c.id);
+    await prisma.credencial.updateMany({
+      where: { id: { in: credIds } },
+      data: { disponible: false, asignada_a: pedido.vendor_id, pedido_id: pedido.id },
+    });
+
+    // Construir respuesta con credenciales
+    const credencialesTexto = disponibles
+      .map((c, i) => `📧 Cuenta ${i + 1}:\nUsuario: ${c.usuario}\nContraseña: ${c.password}${c.perfil ? `\nPerfil: ${c.perfil}` : ''}`)
+      .join('\n\n');
+
+    const respuestaFinal = respuesta_admin
+      ? `${respuesta_admin}\n\n${credencialesTexto}`
+      : credencialesTexto;
+
+    // Actualizar el pedido
+    const updatedPedido = await prisma.pedido.update({
+      where: { id },
+      data: {
+        status: 'COMPLETADO',
+        respuesta_admin: respuestaFinal,
+        respondido_en: new Date(),
+      },
+      include: {
+        vendor: { select: { alias: true } },
+        servicio: { select: { nombre: true } },
+        credenciales: true,
+      },
+    });
+
+    // Notificar al vendedor
+    try {
+      await OneSignal.sendSystemNotification(
+        pedido.vendor_id,
+        '✅ Pedido Aprobado',
+        `Tu pedido de ${pedido.cantidad} ${pedido.servicio?.nombre || 'cuenta(s)'} fue aprobado. Revisa tus credenciales.`
+      );
+    } catch (e) { console.error('Push error:', e); }
+
+    res.json({
+      message: `Pedido aprobado: ${credIds.length} credenciales asignadas`,
+      pedido: updatedPedido,
+      credenciales_asignadas: disponibles.length,
+    });
+  } catch (error) {
+    console.error('Error aprobando pedido:', error);
+    res.status(500).json({ error: 'Error aprobando pedido' });
+  }
+});
+
 export default router;
+
