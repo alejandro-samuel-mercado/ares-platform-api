@@ -184,17 +184,14 @@ router.get('/imagenes', async (req: Request, res: Response): Promise<void> => {
       where: { vendor_id: vendorId, activo: true },
       select: { servicio_id: true },
     });
-    const servicioIds = misServicios.map(s => s.servicio_id);
+    const uniqueServicioIds = Array.from(new Set(misServicios.map(s => s.servicio_id)));
 
-    // Buscar imágenes: globales (sin servicio) + las de sus servicios activos
-    const imagenes = await prisma.imagen.findMany({
+    // Buscar imágenes: solo las vinculadas a los servicios activos del vendedor
+    const imagenesRaw = await prisma.imagen.findMany({
       where: {
         activo: true,
         ...(etiqueta ? { etiquetas: { contains: etiqueta as string } } : {}),
-        OR: [
-          { servicio_id: null },                              // Imágenes globales
-          { servicio_id: { in: servicioIds } },                // Imágenes de su catálogo
-        ],
+        servicio_id: { in: uniqueServicioIds }
       },
       include: {
         servicio: { select: { id: true, nombre: true, logo_url: true } }
@@ -202,8 +199,18 @@ router.get('/imagenes', async (req: Request, res: Response): Promise<void> => {
       orderBy: { creado_en: 'desc' },
     });
 
+    // Deduplicar imágenes por url_base para evitar que vean "múltiples del mismo" si el admin lo subió varias veces
+    const map = new Map<string, typeof imagenesRaw[0]>();
+    for (const img of imagenesRaw) {
+      if (!map.has(img.url_base)) {
+        map.set(img.url_base, img);
+      }
+    }
+    const imagenes = Array.from(map.values());
+
     res.json(imagenes);
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Error obteniendo imágenes' });
   }
 });
