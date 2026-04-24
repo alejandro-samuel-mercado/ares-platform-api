@@ -410,7 +410,7 @@ router.post('/pedidos', planGuard('Pro'), async (req: Request, res: Response): P
  * GET /api/pedidos
  * Lista pedidos del vendedor autenticado (requiere Plan Pro).
  */
-router.get('/pedidos', planGuard('Pro'), async (req: Request, res: Response): Promise<void> => {
+router.get('/pedidos', async (req: Request, res: Response): Promise<void> => {
   try {
     const pedidos = await prisma.pedido.findMany({
       where: { vendor_id: req.vendor!.id },
