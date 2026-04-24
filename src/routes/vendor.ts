@@ -78,7 +78,7 @@ router.post('/mis_servicios', async (req: Request, res: Response): Promise<void>
     const vendor = req.vendor!;
     const { servicio_id, precio_venta } = req.body;
 
-    if (!servicio_id || precio_venta === undefined) {
+    if (!servicio_id || precio_venta === undefined || precio_venta === null) {
       res.status(400).json({ error: 'servicio_id y precio_venta son requeridos' });
       return;
     }
