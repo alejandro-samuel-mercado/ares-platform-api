@@ -334,6 +334,10 @@ router.get('/partidos', async (req: Request, res: Response): Promise<void> => {
  */
 router.post('/pedidos', upload.single('comprobante'), async (req: Request, res: Response): Promise<void> => {
   try {
+    console.log(`[PEDIDOS] Request received. Content-Type: ${req.headers['content-type']}`);
+    console.log(`[PEDIDOS] Body keys: ${Object.keys(req.body || {})}`);
+    console.log(`[PEDIDOS] File status: ${req.file ? 'FILE_PRESENT' : 'FILE_MISSING'}`);
+    
     const vendor = req.vendor!;
     const { servicio_id, cantidad, notas } = req.body;
 

@@ -42,7 +42,17 @@ const storage = useCloudinary
 export const upload = multer({ storage });
 
 export const getFileUrl = (file: any): string => {
-  if (!file) return '';
+  if (!file) {
+    console.log('[CLOUDINARY] getFileUrl: No file provided');
+    return '';
+  }
+  console.log('[CLOUDINARY] getFileUrl Processing:', {
+    fieldname: file.fieldname,
+    originalname: file.originalname,
+    mimetype: file.mimetype,
+    size: file.size,
+    path: file.path ? 'Present' : 'Missing'
+  });
   // Cloudinary return
   if (file.path && file.path.startsWith('http')) return file.path;
   if (file.secure_url) return file.secure_url;
