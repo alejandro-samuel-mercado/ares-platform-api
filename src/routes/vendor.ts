@@ -332,10 +332,10 @@ router.get('/partidos', async (req: Request, res: Response): Promise<void> => {
  * POST /api/pedidos
  * Crea un pedido de credenciales con cantidad y comprobante de pago.
  */
-router.post('/pedidos', async (req: Request, res: Response): Promise<void> => {
+router.post('/pedidos', upload.single('comprobante'), async (req: Request, res: Response): Promise<void> => {
   try {
     const vendor = req.vendor!;
-    const { servicio_id, cantidad, notas, comprobante_url } = req.body;
+    const { servicio_id, cantidad, notas } = req.body;
 
     if (!servicio_id) {
       res.status(400).json({ error: 'servicio_id es requerido' });
@@ -343,13 +343,17 @@ router.post('/pedidos', async (req: Request, res: Response): Promise<void> => {
     }
 
     const cantidadFinal = parseInt(cantidad) || 1;
+    let comprobante_url: string | null = null;
+    if (req.file) {
+      comprobante_url = getFileUrl(req.file);
+    }
 
     const pedido = await prisma.pedido.create({
       data: {
         vendor_id: vendor.id,
         servicio_id,
         cantidad: cantidadFinal,
-        comprobante_url: comprobante_url || null,
+        comprobante_url,
         notas: notas || null,
       },
       include: { servicio: { select: { nombre: true, precio_admin: true } } },
