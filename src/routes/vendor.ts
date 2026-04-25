@@ -346,6 +346,8 @@ router.post('/pedidos', upload.single('comprobante'), async (req: Request, res: 
     let comprobante_url: string | null = null;
     if (req.file) {
       comprobante_url = getFileUrl(req.file);
+    } else if ((req as any).files && (req as any).files.length > 0) {
+      comprobante_url = getFileUrl((req as any).files[0]);
     }
 
     const pedido = await prisma.pedido.create({
@@ -358,6 +360,8 @@ router.post('/pedidos', upload.single('comprobante'), async (req: Request, res: 
       },
       include: { servicio: { select: { nombre: true, precio_admin: true } } },
     });
+
+    console.log(`[PEDIDO] Nuevo pedido creado ID: ${pedido.id} - Comprobante: ${comprobante_url || 'N/A'}`);
 
     // Notificar al admin sobre nuevo pedido
     try {
