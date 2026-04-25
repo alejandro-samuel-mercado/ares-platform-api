@@ -651,6 +651,22 @@ router.get('/pagos', async (req: Request, res: Response): Promise<void> => {
 });
 
 /**
+ * GET /api/admin/vendedores
+ * Lista todos los vendedores (utilizado para cruzar con pedidos y credenciales)
+ */
+router.get('/vendedores', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const vendors = await prisma.vendor.findMany({
+      select: { id: true, nombre: true, alias: true, role: true, _count: { select: { pedidos: true, credenciales: true } } },
+      orderBy: { fecha_registro: 'desc' }
+    });
+    res.json(vendors);
+  } catch (error) {
+    res.status(500).json({ error: 'Error obteniendo vendedores' });
+  }
+});
+
+/**
  * POST /api/admin/pagos/:id/confirm
  * Confirma un pago y extiende la suscripción del vendedor.
  *
