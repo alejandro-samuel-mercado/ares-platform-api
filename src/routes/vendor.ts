@@ -163,6 +163,36 @@ router.delete('/mis_servicios/:id', async (req: Request, res: Response): Promise
   }
 });
 
+/**
+ * PATCH /api/mis_servicios/:id
+ * Actualiza el precio de venta del vendedor para un servicio específico.
+ */
+router.patch('/mis_servicios/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params as { id: string };
+    const { precio_venta } = req.body;
+
+    const servicio = await prisma.miServicio.findFirst({
+      where: { id, vendor_id: req.vendor!.id },
+    });
+
+    if (!servicio) {
+      res.status(404).json({ error: 'Servicio no encontrado' });
+      return;
+    }
+
+    const updated = await prisma.miServicio.update({
+      where: { id },
+      data: { precio_venta: parseFloat(precio_venta) || 0 },
+      include: { servicio: true },
+    });
+
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: 'Error actualizando precio de venta' });
+  }
+});
+
 // ═══════════════════════════════════════════
 // IMÁGENES
 // ═══════════════════════════════════════════
@@ -334,11 +364,22 @@ router.get('/partidos', async (req: Request, res: Response): Promise<void> => {
  */
 router.post('/pedidos', upload.single('comprobante'), async (req: Request, res: Response): Promise<void> => {
   try {
+    const vendor = req.vendor!;
+
+    // Verificar que el plan permita hacer pedidos
+    if (!vendor.plan.pedidos_automaticos && vendor.role !== 'SUPERADMIN') {
+      res.status(403).json({
+        error: 'Tu plan no incluye pedidos de credenciales',
+        reason: 'plan_limit_reached',
+        current_plan: vendor.plan.nombre,
+        message: `El plan ${vendor.plan.nombre} no incluye solicitud de credenciales. Mejora tu plan para acceder a esta función.`,
+      });
+      return;
+    }
+
     console.log(`[PEDIDOS] Request received. Content-Type: ${req.headers['content-type']}`);
-    console.log(`[PEDIDOS] Body keys: ${Object.keys(req.body || {})}`);
     console.log(`[PEDIDOS] File status: ${req.file ? 'FILE_PRESENT' : 'FILE_MISSING'}`);
     
-    const vendor = req.vendor!;
     const { servicio_id, cantidad, notas } = req.body;
 
     if (!servicio_id) {
@@ -742,10 +783,10 @@ router.get('/public/u/:alias', async (req: Request, res: Response): Promise<void
       return;
     }
 
-    // Verificar el plan por separado
-    const plan = await prisma.plan.findUnique({ where: { id: vendor.plan_id }, select: { nombre: true } });
-    if (!plan || plan.nombre.toUpperCase() !== 'PRO') {
-      res.status(403).json({ error: 'Este vendedor no tiene enlace público activo' });
+    // Verificar que el plan tenga enlace_publico habilitado
+    const plan = await prisma.plan.findUnique({ where: { id: vendor.plan_id }, select: { enlace_publico: true, nombre: true } });
+    if (!plan || !plan.enlace_publico) {
+      res.status(403).json({ error: 'Este vendedor no tiene enlace público activo. Requiere un plan con Enlace Público habilitado.' });
       return;
     }
 

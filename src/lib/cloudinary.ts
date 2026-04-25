@@ -56,8 +56,11 @@ export const getFileUrl = (file: any): string => {
   // Cloudinary return
   if (file.path && file.path.startsWith('http')) return file.path;
   if (file.secure_url) return file.secure_url;
-  // Local diskStorage return
-  if (file.filename) return `/uploads/${file.filename}`;
+  // Local diskStorage return — build absolute URL so the frontend can access it
+  if (file.filename) {
+    const apiBase = (process.env.BASE_URL || process.env.API_URL || 'http://localhost:4000').replace(/\/+$/, '');
+    return `${apiBase}/uploads/${file.filename}`;
+  }
   return file.path || '';
 };
 

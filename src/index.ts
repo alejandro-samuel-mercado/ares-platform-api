@@ -113,7 +113,7 @@ app.post('/api/pagos/comprobante',
         return;
       }
 
-      const final_comprobante_url = file ? file.path : comprobante_url;
+      const final_comprobante_url = file ? getFileUrl(file) : comprobante_url;
 
       console.log('--- INTENTO DE CARGA DE COMPROBANTE ---');
       console.log('Vendor:', vendor.id, '@' + vendor.alias);

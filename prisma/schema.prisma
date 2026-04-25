@@ -118,11 +118,12 @@ model ServicioBase {
 /// El vendedor activa un servicio de su catálogo.
 /// ──────────────────────────────────────────
 model MiServicio {
-  id           String   @id @default(cuid())
-  vendor_id    String
-  servicio_id  String
-  activo       Boolean  @default(true)
-  creado_en    DateTime @default(now())
+  id            String   @id @default(cuid())
+  vendor_id     String
+  servicio_id   String
+  precio_venta  Float    @default(0) // Precio que el vendedor cobra a su cliente final
+  activo        Boolean  @default(true)
+  creado_en     DateTime @default(now())
 
   vendor   Vendor       @relation(fields: [vendor_id], references: [id])
   servicio ServicioBase @relation(fields: [servicio_id], references: [id])
