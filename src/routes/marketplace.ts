@@ -11,6 +11,8 @@ import { Router, Request, Response } from 'express';
 import prisma from '../lib/prisma';
 import { planGuard } from '../middleware/planGuard';
 
+import { upload, getFileUrl } from '../lib/cloudinary';
+
 const router = Router();
 
 // Todas las rutas de este archivo requieren plan Proveedor (o SuperAdmin)
@@ -40,14 +42,17 @@ router.get('/mine', async (req: Request, res: Response): Promise<void> => {
  * Crea un nuevo servicio base (propuesta).
  * Se marca automáticamente como APROBADO por defecto en el modelo.
  */
-router.post('/propose', async (req: Request, res: Response): Promise<void> => {
+router.post('/propose', upload.single('logo'), async (req: Request, res: Response): Promise<void> => {
   try {
     const { nombre, descripcion, precio_costo, icono_url, categoria } = req.body;
+    const file = req.file;
 
     if (!nombre || !precio_costo) {
       res.status(400).json({ error: 'Nombre y precio son requeridos' });
       return;
     }
+
+    const finalLogoUrl = file ? getFileUrl(file) : (icono_url || '');
 
     const servicio = await prisma.servicioBase.create({
       data: {
@@ -55,7 +60,7 @@ router.post('/propose', async (req: Request, res: Response): Promise<void> => {
         descripcion_base: descripcion || '',
         precio_admin: parseFloat(precio_costo),
         precio_sugerido: parseFloat(precio_costo) * 1.2, // Sugerir un 20% más
-        logo_url: icono_url || '',
+        logo_url: finalLogoUrl,
         categoria: categoria || 'OTROS',
         proveedor_id: req.vendor!.id,
         estado_aprobacion: 'APROBADO', // Publicación automática

@@ -12,7 +12,7 @@
 import { Request, Response, NextFunction } from 'express';
 
 // Modules where colaborador has FULL access (CRUD)
-const COLLAB_FULL_ACCESS = ['/imagenes', '/estrenos', '/partidos', '/mensajes'];
+const COLLAB_FULL_ACCESS = ['/imagenes', '/estrenos', '/partidos', '/mensajes', '/promociones'];
 
 // Modules where colaborador has READ-ONLY access
 const COLLAB_READONLY = ['/vendedores', '/dashboard'];

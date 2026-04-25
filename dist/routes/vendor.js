@@ -534,10 +534,19 @@ router.get('/perfil', async (req, res) => {
  * PUT /api/perfil
  * Actualiza logo, WhatsApp y alias del vendedor.
  */
-router.put('/perfil', async (req, res) => {
+router.put('/perfil', cloudinary_1.upload.fields([
+    { name: 'logo', maxCount: 1 },
+    { name: 'qr_bob', maxCount: 1 },
+    { name: 'qr_usd', maxCount: 1 }
+]), async (req, res) => {
     try {
         const vendor = req.vendor;
         const { whatsapp, alias, nombre, logo_url, logo_cloudinary_id, biografia, whatsapp_api_enabled, whatsapp_api_token, qr_bob, qr_usd, tigo_money } = req.body;
+        const files = req.files;
+        // Obtener URLs finales (Archivo local > URL manual)
+        const finalLogoUrl = files?.logo ? (0, cloudinary_1.getFileUrl)(files.logo[0]) : logo_url;
+        const finalQrBobUrl = files?.qr_bob ? (0, cloudinary_1.getFileUrl)(files.qr_bob[0]) : qr_bob;
+        const finalQrUsdUrl = files?.qr_usd ? (0, cloudinary_1.getFileUrl)(files.qr_usd[0]) : qr_usd;
         // Verificar que el nuevo alias no esté en uso
         if (alias && alias !== vendor.alias) {
             const existing = await prisma_1.default.vendor.findFirst({
@@ -554,13 +563,13 @@ router.put('/perfil', async (req, res) => {
                 ...(whatsapp !== undefined && { whatsapp }),
                 ...(alias !== undefined && { alias: alias.toLowerCase() }),
                 ...(nombre !== undefined && { nombre }),
-                ...(logo_url !== undefined && { logo_url }),
+                ...(finalLogoUrl !== undefined && { logo_url: finalLogoUrl }),
                 ...(logo_cloudinary_id !== undefined && { logo_cloudinary_id }),
                 ...(biografia !== undefined && { biografia }),
                 ...(whatsapp_api_enabled !== undefined && { whatsapp_api_enabled }),
                 ...(whatsapp_api_token !== undefined && { whatsapp_api_token }),
-                ...(qr_bob !== undefined && { qr_bob }),
-                ...(qr_usd !== undefined && { qr_usd }),
+                ...(finalQrBobUrl !== undefined && { qr_bob: finalQrBobUrl }),
+                ...(finalQrUsdUrl !== undefined && { qr_usd: finalQrUsdUrl }),
                 ...(tigo_money !== undefined && { tigo_money }),
             },
             include: { plan: true },
@@ -705,42 +714,6 @@ router.get('/marketplace', async (_req, res) => {
     }
     catch (error) {
         res.status(500).json({ error: 'Error cargando marketplace' });
-    }
-});
-/**
- * POST /api/marketplace/propose
- * Permite a un vendor con Plan Proveedor proponer un nuevo ServicioBase al Marketplace.
- * El plan "Proveedor" habilita marketplace_proveedor=true.
- */
-router.post('/marketplace/propose', async (req, res) => {
-    try {
-        // Verificar por Plan, no por rol
-        if (!req.vendor.plan.marketplace_proveedor) {
-            res.status(403).json({ error: 'Tu plan no incluye la funcionalidad de Marketplace Proveedor' });
-            return;
-        }
-        const { nombre_servicio, descripcion, precio_base, logo_url } = req.body;
-        if (!nombre_servicio || !precio_base) {
-            res.status(400).json({ error: 'Faltan campos requeridos (nombre_servicio, precio_base)' });
-            return;
-        }
-        const proposal = await prisma_1.default.servicioBase.create({
-            data: {
-                nombre: nombre_servicio,
-                descripcion_base: descripcion || '',
-                precio_sugerido: parseFloat(precio_base),
-                logo_url: logo_url || '',
-                categoria: 'IPTV',
-                es_iptv_propio: false,
-                proveedor_id: req.vendor.id,
-                estado_aprobacion: 'PENDIENTE',
-                comision_pct: 10.0,
-            }
-        });
-        res.status(201).json({ message: 'Propuesta enviada al administrador', proposal });
-    }
-    catch (error) {
-        res.status(500).json({ error: 'Error enviando propuesta' });
     }
 });
 /**
