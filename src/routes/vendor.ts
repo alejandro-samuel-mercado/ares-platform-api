@@ -380,7 +380,7 @@ router.post('/pedidos', upload.single('comprobante'), async (req: Request, res: 
     console.log(`[PEDIDOS] Request received. Content-Type: ${req.headers['content-type']}`);
     console.log(`[PEDIDOS] File status: ${req.file ? 'FILE_PRESENT' : 'FILE_MISSING'}`);
     
-    const { servicio_id, cantidad, notas } = req.body;
+    const { servicio_id, cantidad, notas, comprobante_url: bodyComprobanteUrl } = req.body;
 
     if (!servicio_id) {
       res.status(400).json({ error: 'servicio_id es requerido' });
@@ -388,7 +388,7 @@ router.post('/pedidos', upload.single('comprobante'), async (req: Request, res: 
     }
 
     const cantidadFinal = parseInt(cantidad) || 1;
-    let comprobante_url: string | null = null;
+    let comprobante_url: string | null = bodyComprobanteUrl || null;
     if (req.file) {
       comprobante_url = getFileUrl(req.file);
     } else if ((req as any).files && (req as any).files.length > 0) {
