@@ -1539,6 +1539,35 @@ router.put('/credenciales/:id', async (req: Request, res: Response): Promise<voi
 });
 
 /**
+ * POST /api/admin/credenciales/:id/asignar
+ * Asigna manualmente una credencial a un vendedor.
+ */
+router.post('/credenciales/:id/asignar', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params as { id: string };
+    const { vendor_id } = req.body;
+
+    if (!vendor_id) {
+      res.status(400).json({ error: 'Falta proporcionar el vendor_id' });
+      return;
+    }
+
+    await prisma.credencial.update({
+      where: { id },
+      data: {
+        asignada_a: vendor_id,
+        disponible: false
+      }
+    });
+
+    res.json({ message: 'Credencial asignada exitosamente' });
+  } catch (error) {
+    console.error('Error asignando credencial:', error);
+    res.status(500).json({ error: 'Error interno asignando la credencial' });
+  }
+});
+
+/**
  * DELETE /api/admin/credenciales/:id
  * Elimina una credencial.
  */

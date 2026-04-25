@@ -191,7 +191,10 @@ router.get('/imagenes', async (req: Request, res: Response): Promise<void> => {
       where: {
         activo: true,
         ...(etiqueta ? { etiquetas: { contains: etiqueta as string } } : {}),
-        servicio_id: { in: uniqueServicioIds }
+        OR: [
+          { servicio_id: null },
+          { servicio_id: { in: uniqueServicioIds } }
+        ]
       },
       include: {
         servicio: { select: { id: true, nombre: true, logo_url: true } }
