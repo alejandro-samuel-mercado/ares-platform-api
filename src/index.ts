@@ -70,6 +70,8 @@ app.get('/api/ajustes-publicos', async (_req, res) => {
     await prisma.$disconnect();
     res.json({
       qr_cobro_url: ajustes?.qr_cobro_url || '',
+      qr_cobro_bob: ajustes?.qr_cobro_bob || '',
+      qr_cobro_usd: ajustes?.qr_cobro_usd || '',
       tigo_money_numero: ajustes?.tigo_money_numero || '',
       nombre_plataforma: ajustes?.nombre_plataforma || 'Ares',
       logo_url: ajustes?.logo_url || '',
@@ -159,16 +161,16 @@ app.post('/api/pagos/comprobante',
   }
 );
 
-app.use('/api',
-  authMiddleware,
-  subscriptionMiddleware,
-  vendorRoutes
-);
-
 app.use('/api/marketplace',
   authMiddleware,
   subscriptionMiddleware,
   marketplaceRoutes
+);
+
+app.use('/api',
+  authMiddleware,
+  subscriptionMiddleware,
+  vendorRoutes
 );
 
 // ─── Error Handler Global ─────────────────────────────────────

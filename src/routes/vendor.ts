@@ -54,12 +54,17 @@ router.get('/servicios_base', async (req: Request, res: Response): Promise<void>
   try {
     const servicios = await prisma.servicioBase.findMany({
       where: { activo: true },
-      include: {
-        _count: { select: { credenciales: { where: { asignada_a: null } } } }
-      },
       orderBy: { nombre: 'asc' },
     });
-    res.json(servicios);
+
+    const withStock = await Promise.all(servicios.map(async (s) => {
+      const stock = await prisma.credencial.count({
+        where: { servicio_id: s.id, disponible: true, asignada_a: null }
+      });
+      return { ...s, stock };
+    }));
+
+    res.json(withStock);
   } catch (error) {
     res.status(500).json({ error: 'Error obteniendo servicios base' });
   }
@@ -76,18 +81,23 @@ router.get('/servicios_base', async (req: Request, res: Response): Promise<void>
  */
 router.get('/mis_servicios', async (req: Request, res: Response): Promise<void> => {
   try {
-    const servicios = await prisma.miServicio.findMany({
+    const misServicios = await prisma.miServicio.findMany({
       where: { vendor_id: req.vendor!.id },
-      include: { 
-        servicio: {
-          include: {
-            _count: { select: { credenciales: { where: { asignada_a: null } } } }
-          }
-        } 
-      },
-      orderBy: { creado_en: 'desc' },
+      include: { servicio: true }
     });
-    res.json(servicios);
+
+    const withStock = await Promise.all(misServicios.map(async (ms: any) => {
+      const stock = await prisma.credencial.count({
+        where: { servicio_id: ms.servicio_id, disponible: true, asignada_a: null }
+      });
+      return { 
+        ...ms, 
+        stock,
+        servicio: { ...ms.servicio, stock }
+      };
+    }));
+
+    res.json(withStock);
   } catch (error) {
     res.status(500).json({ error: 'Error obteniendo mis servicios' });
   }
@@ -418,13 +428,16 @@ router.post('/pedidos', upload.single('comprobante'), async (req: Request, res: 
 
     const cantidadFinal = parseInt(cantidad) || 1;
 
-    // Verificar Stock
+    // Verificar Stock (Hard Block)
     const disponibles = await prisma.credencial.count({
       where: { servicio_id, asignada_a: null }
     });
 
-    if (disponibles === 0 && cantidadFinal > 2) {
-      res.status(400).json({ error: 'Agotado temporalmente. Puedes reservar máximo 2 cuentas hasta reabastecimiento.' });
+    if (disponibles === 0) {
+      res.status(400).json({ 
+        error: 'AGOTADO: No hay cuentas disponibles para este servicio en este momento.',
+        reason: 'out_of_stock'
+      });
       return;
     }
 
@@ -521,8 +534,23 @@ router.get('/pedidos', async (req: Request, res: Response): Promise<void> => {
  */
 router.get('/perfil', async (req: Request, res: Response): Promise<void> => {
   try {
-    const vendor = req.vendor!;
-    res.json({
+    const { PrismaClient } = await import('@prisma/client');
+    const localPrisma = new PrismaClient();
+    
+    // Forzamos una lectura fresca de la DB para evitar datos cacheados en req.vendor
+    const vendor = await localPrisma.vendor.findUnique({
+      where: { id: req.vendor!.id },
+      include: { plan: true }
+    });
+
+    await localPrisma.$disconnect();
+
+    if (!vendor) {
+      res.status(404).json({ error: 'Vendor no encontrado' });
+      return;
+    }
+
+    const responseData = {
       id: vendor.id,
       nombre: vendor.nombre,
       alias: vendor.alias,
@@ -530,6 +558,12 @@ router.get('/perfil', async (req: Request, res: Response): Promise<void> => {
       whatsapp: vendor.whatsapp,
       logo_url: vendor.logo_url,
       plan: vendor.plan.nombre,
+      plan_features: {
+        pedidos_automaticos: vendor.plan.pedidos_automaticos,
+        enlace_publico: vendor.plan.enlace_publico,
+        marketplace_proveedor: vendor.plan.marketplace_proveedor,
+        limite_servicios: vendor.plan.limite_servicios,
+      },
       texto_limite: (vendor as any).plan?.texto_limite,
       plan_id: vendor.plan_id,
       role: vendor.role,
@@ -538,10 +572,21 @@ router.get('/perfil', async (req: Request, res: Response): Promise<void> => {
       biografia: vendor.biografia,
       whatsapp_api_enabled: vendor.whatsapp_api_enabled,
       whatsapp_api_token: vendor.whatsapp_api_token,
+      qr_bob: (vendor as any).qr_bob,
+      qr_usd: (vendor as any).qr_usd,
+      tigo_money: (vendor as any).tigo_money,
       fecha_registro: vendor.fecha_registro,
       fecha_vencimiento: vendor.fecha_vencimiento,
+    };
+    
+    console.log('[API] GET /perfil fresco:', {
+      qr_bob: responseData.qr_bob,
+      tigo_money: responseData.tigo_money
     });
+    
+    res.json(responseData);
   } catch (error) {
+    console.error('[API] Error en GET /perfil:', error);
     res.status(500).json({ error: 'Error obteniendo perfil' });
   }
 });
@@ -558,23 +603,30 @@ router.put('/perfil',
   ]),
   async (req: Request, res: Response): Promise<void> => {
   try {
+    const { PrismaClient } = await import('@prisma/client');
+    const localPrisma = new PrismaClient();
+    
     const vendor = req.vendor!;
+    console.log('[API] Perfil Update for:', vendor.alias);
+    
     const { 
       whatsapp, alias, nombre, logo_url, logo_cloudinary_id, biografia,
       whatsapp_api_enabled, whatsapp_api_token,
-      qr_bob, qr_usd, tigo_money
+      qr_bob_url, qr_usd_url, tigo_money
     } = req.body;
 
     const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
 
     // Obtener URLs finales (Archivo local > URL manual)
-    const finalLogoUrl = files?.logo ? getFileUrl(files.logo[0]) : logo_url;
-    const finalQrBobUrl = files?.qr_bob ? getFileUrl(files.qr_bob[0]) : qr_bob;
-    const finalQrUsdUrl = files?.qr_usd ? getFileUrl(files.qr_usd[0]) : qr_usd;
+    const finalLogoUrl = (files?.logo && files.logo[0]) ? getFileUrl(files.logo[0]) : logo_url;
+    const finalQrBobUrl = (files?.qr_bob && files.qr_bob[0]) ? getFileUrl(files.qr_bob[0]) : qr_bob_url;
+    const finalQrUsdUrl = (files?.qr_usd && files.qr_usd[0]) ? getFileUrl(files.qr_usd[0]) : qr_usd_url;
+
+    console.log('[API] Fields Resolved:', { finalLogoUrl, finalQrBobUrl, finalQrUsdUrl, whatsapp_api_enabled, tigo_money });
 
     // Verificar que el nuevo alias no esté en uso
     if (alias && alias !== vendor.alias) {
-      const existing = await prisma.vendor.findFirst({
+      const existing = await localPrisma.vendor.findFirst({
         where: { alias: alias.toLowerCase(), id: { not: vendor.id } },
       });
       if (existing) {
@@ -583,41 +635,59 @@ router.put('/perfil',
       }
     }
 
-    const updated = await prisma.vendor.update({
+    // Parsing estricto para booleanos (formData envía strings)
+    let apiEnabled: boolean | undefined = undefined;
+    if (whatsapp_api_enabled !== undefined) {
+      apiEnabled = (whatsapp_api_enabled === 'true' || whatsapp_api_enabled === true);
+    }
+
+    const updateData: any = {
+      ...(whatsapp !== undefined && { whatsapp }),
+      ...(alias !== undefined && { alias: alias.toLowerCase() }),
+      ...(nombre !== undefined && { nombre }),
+      ...(finalLogoUrl !== undefined && { logo_url: finalLogoUrl }),
+      ...(logo_cloudinary_id !== undefined && { logo_cloudinary_id }),
+      ...(biografia !== undefined && { biografia }),
+      ...(apiEnabled !== undefined && { whatsapp_api_enabled: apiEnabled }),
+      ...(whatsapp_api_token !== undefined && { whatsapp_api_token }),
+      ...(finalQrBobUrl !== undefined && { qr_bob: finalQrBobUrl }),
+      ...(finalQrUsdUrl !== undefined && { qr_usd: finalQrUsdUrl }),
+      ...(tigo_money !== undefined && { tigo_money }),
+    };
+
+    console.log('[API] Prisma Update Data:', updateData);
+
+    const updated = await localPrisma.vendor.update({
       where: { id: vendor.id },
-      data: {
-        ...(whatsapp !== undefined && { whatsapp }),
-        ...(alias !== undefined && { alias: alias.toLowerCase() }),
-        ...(nombre !== undefined && { nombre }),
-        ...(finalLogoUrl !== undefined && { logo_url: finalLogoUrl }),
-        ...(logo_cloudinary_id !== undefined && { logo_cloudinary_id }),
-        ...(biografia !== undefined && { biografia }),
-        ...(whatsapp_api_enabled !== undefined && { whatsapp_api_enabled }),
-        ...(whatsapp_api_token !== undefined && { whatsapp_api_token }),
-        ...(finalQrBobUrl !== undefined && { qr_bob: finalQrBobUrl }),
-        ...(finalQrUsdUrl !== undefined && { qr_usd: finalQrUsdUrl }),
-        ...(tigo_money !== undefined && { tigo_money }),
-      },
+      data: updateData,
       include: { plan: true },
     });
+
+    await localPrisma.$disconnect();
 
     res.json({
       message: 'Perfil actualizado',
       vendor: {
-        id: updated.id,
-        nombre: updated.nombre,
-        alias: updated.alias,
-        whatsapp: updated.whatsapp,
-        logo_url: updated.logo_url,
-        plan: updated.plan.nombre,
-        texto_limite: updated.plan.texto_limite,
-        biografia: updated.biografia,
-        rating: updated.rating,
-        whatsapp_api_enabled: updated.whatsapp_api_enabled,
-        whatsapp_api_token: updated.whatsapp_api_token,
-        qr_bob: updated.qr_bob,
-        qr_usd: updated.qr_usd,
-        tigo_money: updated.tigo_money,
+        id: (updated as any).id,
+        nombre: (updated as any).nombre,
+        alias: (updated as any).alias,
+        whatsapp: (updated as any).whatsapp,
+        logo_url: (updated as any).logo_url,
+        plan: (updated as any).plan.nombre,
+        plan_features: {
+          pedidos_automaticos: (updated as any).plan.pedidos_automaticos,
+          enlace_publico: (updated as any).plan.enlace_publico,
+          marketplace_proveedor: (updated as any).plan.marketplace_proveedor,
+          limite_servicios: (updated as any).plan.limite_servicios,
+        },
+        texto_limite: (updated as any).plan.texto_limite,
+        biografia: (updated as any).biografia,
+        rating: (updated as any).rating,
+        whatsapp_api_enabled: (updated as any).whatsapp_api_enabled,
+        whatsapp_api_token: (updated as any).whatsapp_api_token,
+        qr_bob: (updated as any).qr_bob,
+        qr_usd: (updated as any).qr_usd,
+        tigo_money: (updated as any).tigo_money,
       },
     });
   } catch (error) {
@@ -710,9 +780,13 @@ router.get('/ajustes-publicos', async (_req: Request, res: Response): Promise<vo
 
     res.json({
       qr_cobro_url: ajustes?.qr_cobro_url || '',
+      qr_cobro_bob: ajustes?.qr_cobro_bob || '',
+      qr_cobro_usd: ajustes?.qr_cobro_usd || '',
       tigo_money_numero: ajustes?.tigo_money_numero || '',
       nombre_plataforma: ajustes?.nombre_plataforma || 'Ares',
       logo_url: ajustes?.logo_url || '',
+      noticia_global: ajustes?.noticia_global || '',
+      whatsapp_soporte: ajustes?.whatsapp_soporte || '',
     });
   } catch (error) {
     res.status(500).json({ error: 'Error obteniendo ajustes' });
@@ -725,51 +799,6 @@ router.get('/ajustes-publicos', async (_req: Request, res: Response): Promise<vo
 
 
 
-/**
- * GET /api/marketplace
- * Lista todos los servicios aprobados de proveedores externos.
- */
-router.get('/marketplace', async (_req: Request, res: Response): Promise<void> => {
-  try {
-    const marketplace = await prisma.servicioBase.findMany({
-      where: {
-        proveedor_id: { not: null },
-        estado_aprobacion: 'APROBADO',
-        activo: true,
-      },
-      include: {
-        proveedor: {
-          select: { nombre: true, alias: true, whatsapp: true, logo_url: true, rating: true }
-        }
-      },
-      orderBy: { nombre: 'asc' }
-    });
-    res.json(marketplace);
-  } catch (error) {
-    res.status(500).json({ error: 'Error cargando marketplace' });
-  }
-});
-
-/**
- * GET /api/marketplace/proveedor/:id
- * Obtiene el catálogo detallado de un proveedor específico.
- */
-router.get('/marketplace/proveedor/:id', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params as { id: string };
-    const catálogo = await prisma.miServicio.findMany({
-      where: { 
-        vendor_id: id, 
-        activo: true,
-        servicio: { estado_aprobacion: 'APROBADO' } as any
-      },
-      include: { servicio: true }
-    });
-    res.json(catálogo);
-  } catch (error) {
-    res.status(500).json({ error: 'Error obteniendo catálogo del proveedor' });
-  }
-});
 
 // ═══════════════════════════════════════════
 // ENLACE PUBLICO (GET sin autenticacion)

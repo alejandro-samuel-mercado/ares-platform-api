@@ -21,9 +21,9 @@ async function main() {
   // ─── Planes de Membresía ───────────────────────────────────
   const plans = [
     { id: 'plan-gratis', nombre: 'Gratis', precio: 0, dias: 7, limite_servicios: 2, texto_limite: 'Se bloquea al día 8. No copia WhatsApp en textos' },
-    { id: 'plan-vendedor', nombre: 'Vendedor', precio: 35, dias: 30, limite_servicios: 5 },
+    { id: 'plan-vendedor', nombre: 'Vendedor', precio: 35, dias: 30, limite_servicios: 5, pedidos_automaticos: true },
     { id: 'plan-pro', nombre: 'Pro', precio: 70, dias: 30, limite_servicios: null, pedidos_automaticos: true, enlace_publico: true },
-    { id: 'plan-proveedor', nombre: 'Proveedor', precio: 200, dias: 30, limite_servicios: null, pedidos_automaticos: true, marketplace_proveedor: true, texto_limite: 'Aplica comisión del 10% por venta generada' }
+    { id: 'plan-proveedor', nombre: 'Proveedor', precio: 200, dias: 30, limite_servicios: null, pedidos_automaticos: true, enlace_publico: true, marketplace_proveedor: true, texto_limite: 'Aplica comisión del 10% por venta generada' }
   ];
 
   await prisma.ajustesPlataforma.upsert({
