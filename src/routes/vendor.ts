@@ -55,7 +55,7 @@ router.get('/servicios_base', async (req: Request, res: Response): Promise<void>
     const servicios = await prisma.servicioBase.findMany({
       where: { activo: true },
       include: {
-        _count: { select: { credenciales: { where: { asignadaAId: null } } } }
+        _count: { select: { credenciales: { where: { asignada_a: null } } } }
       },
       orderBy: { nombre: 'asc' },
     });
@@ -81,7 +81,7 @@ router.get('/mis_servicios', async (req: Request, res: Response): Promise<void> 
       include: { 
         servicio: {
           include: {
-            _count: { select: { credenciales: { where: { asignadaAId: null } } } }
+            _count: { select: { credenciales: { where: { asignada_a: null } } } }
           }
         } 
       },
@@ -420,7 +420,7 @@ router.post('/pedidos', upload.single('comprobante'), async (req: Request, res: 
 
     // Verificar Stock
     const disponibles = await prisma.credencial.count({
-      where: { servicio_id, asignadaAId: null }
+      where: { servicio_id, asignada_a: null }
     });
 
     if (disponibles === 0 && cantidadFinal > 2) {

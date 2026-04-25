@@ -34,6 +34,9 @@ model Vendor {
   biografia          String? // Descripción comercial para el marketplace
   role               String   @default("VENDOR") // SUPERADMIN | VENDOR | GUEST
   es_colaborador     Boolean  @default(false)    // Acceso limitado al panel admin
+  qr_bob             String?  // QR para pagos en Bs
+  qr_usd             String?  // QR para pagos en USD
+  tigo_money         String?  // Número de Tigo Money
 
   plan          Plan           @relation(fields: [plan_id], references: [id])
   mis_servicios MiServicio[]
@@ -147,6 +150,7 @@ model Credencial {
   disponible   Boolean  @default(true) // false = ya asignada
   asignada_a   String?  // vendor_id
   pedido_id    String?  // pedido que la consumió
+  provider_id  String?  // ID del proveedor que proveyó esta credencial
   creado_en    DateTime @default(now())
 
   servicio ServicioBase @relation(fields: [servicio_id], references: [id])

@@ -185,7 +185,7 @@ router.get('/proveedor/:id/pagos', async (req: Request, res: Response): Promise<
   try {
     const { id } = req.params;
     const provider = await prisma.vendor.findUnique({
-      where: { id },
+      where: { id: id as string },
       select: { 
         qr_bob: true, 
         qr_usd: true, 

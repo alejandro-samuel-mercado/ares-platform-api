@@ -58,9 +58,11 @@ const vendor_1 = __importDefault(require("./routes/vendor"));
 const admin_1 = __importDefault(require("./routes/admin"));
 const webhooks_1 = __importDefault(require("./routes/webhooks"));
 const backup_1 = __importDefault(require("./routes/backup"));
+const marketplace_1 = __importDefault(require("./routes/marketplace"));
 const auth_2 = require("./middleware/auth");
 const subscription_1 = require("./middleware/subscription");
 const roleGuard_1 = require("./middleware/roleGuard");
+const colaboradorGuard_1 = require("./middleware/colaboradorGuard");
 const cloudinary_1 = require("./lib/cloudinary");
 const prisma_1 = __importDefault(require("./lib/prisma"));
 const onesignal_1 = require("./lib/onesignal");
@@ -109,7 +111,7 @@ app.get('/api/ajustes-publicos', async (_req, res) => {
 });
 // ─── Rutas Admin (auth + suscripción + rol SUPERADMIN) ────────
 app.use('/api/admin/backups', auth_2.authMiddleware, (0, roleGuard_1.roleGuard)('SUPERADMIN'), backup_1.default);
-app.use('/api/admin', auth_2.authMiddleware, (0, roleGuard_1.roleGuard)('SUPERADMIN'), admin_1.default);
+app.use('/api/admin', auth_2.authMiddleware, (0, roleGuard_1.roleGuard)('SUPERADMIN'), colaboradorGuard_1.colaboradorGuard, admin_1.default);
 // ─── Rutas Vendor (auth + suscripción) ────────────────────────
 // Nota: /api/pagos/comprobante se exime del subscriptionMiddleware
 app.post('/api/pagos/comprobante', auth_2.authMiddleware, cloudinary_1.upload.single('comprobante'), async (req, res) => {
@@ -125,7 +127,7 @@ app.post('/api/pagos/comprobante', auth_2.authMiddleware, cloudinary_1.upload.si
             res.status(400).json({ error: 'Comprobante requerido' });
             return;
         }
-        const final_comprobante_url = file ? file.path : comprobante_url;
+        const final_comprobante_url = file ? (0, cloudinary_1.getFileUrl)(file) : comprobante_url;
         console.log('--- INTENTO DE CARGA DE COMPROBANTE ---');
         console.log('Vendor:', vendor.id, '@' + vendor.alias);
         console.log('Payload:', { monto, plan_id, final_comprobante_url });
@@ -164,6 +166,7 @@ app.post('/api/pagos/comprobante', auth_2.authMiddleware, cloudinary_1.upload.si
     }
 });
 app.use('/api', auth_2.authMiddleware, subscription_1.subscriptionMiddleware, vendor_1.default);
+app.use('/api/marketplace', auth_2.authMiddleware, subscription_1.subscriptionMiddleware, marketplace_1.default);
 // ─── Error Handler Global ─────────────────────────────────────
 app.use((err, _req, res, _next) => {
     console.error('🔥 Error no manejado:', err);

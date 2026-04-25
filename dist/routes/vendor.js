@@ -53,10 +53,28 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const prisma_1 = __importDefault(require("../lib/prisma"));
 const onesignal_1 = require("../lib/onesignal");
-const planGuard_1 = require("../middleware/planGuard");
 const watermark_1 = require("../lib/watermark");
 const cloudinary_1 = require("../lib/cloudinary");
 const router = (0, express_1.Router)();
+// ═══════════════════════════════════════════
+// PLANES
+// ═══════════════════════════════════════════
+/**
+ * GET /api/planes
+ * Lista todos los planes activos disponibles para el vendedor.
+ */
+router.get('/planes', async (req, res) => {
+    try {
+        const planes = await prisma_1.default.plan.findMany({
+            where: { activo: true },
+            orderBy: { precio: 'asc' },
+        });
+        res.json(planes);
+    }
+    catch (error) {
+        res.status(500).json({ error: 'Error obteniendo planes' });
+    }
+});
 // ═══════════════════════════════════════════
 // SERVICIOS BASE (Catálogo maestro)
 // ═══════════════════════════════════════════
@@ -68,6 +86,9 @@ router.get('/servicios_base', async (req, res) => {
     try {
         const servicios = await prisma_1.default.servicioBase.findMany({
             where: { activo: true },
+            include: {
+                _count: { select: { credenciales: { where: { asignada_a: null } } } }
+            },
             orderBy: { nombre: 'asc' },
         });
         res.json(servicios);
@@ -88,7 +109,13 @@ router.get('/mis_servicios', async (req, res) => {
     try {
         const servicios = await prisma_1.default.miServicio.findMany({
             where: { vendor_id: req.vendor.id },
-            include: { servicio: true },
+            include: {
+                servicio: {
+                    include: {
+                        _count: { select: { credenciales: { where: { asignada_a: null } } } }
+                    }
+                }
+            },
             orderBy: { creado_en: 'desc' },
         });
         res.json(servicios);
@@ -99,22 +126,16 @@ router.get('/mis_servicios', async (req, res) => {
 });
 /**
  * POST /api/mis_servicios
- * Activa un servicio en el catálogo del vendedor con precio personalizado.
- *
- * Reglas de negocio:
- * - Verifica que no exceda el límite del plan (5 para Vendedor/Gratis)
- * - Verifica que el servicio no esté ya activado
- * - Verifica que el servicio base exista y esté activo
+ * Activa un servicio en el catálogo del vendedor (sin precio, solo selección).
  */
 router.post('/mis_servicios', async (req, res) => {
     try {
         const vendor = req.vendor;
-        const { servicio_id, precio_venta } = req.body;
-        if (!servicio_id || precio_venta === undefined) {
-            res.status(400).json({ error: 'servicio_id y precio_venta son requeridos' });
+        const { servicio_id } = req.body;
+        if (!servicio_id) {
+            res.status(400).json({ error: 'servicio_id es requerido' });
             return;
         }
-        // Verificar que el servicio base existe y está activo
         const servicioBase = await prisma_1.default.servicioBase.findFirst({
             where: { id: servicio_id, activo: true },
         });
@@ -138,16 +159,14 @@ router.post('/mis_servicios', async (req, res) => {
                 return;
             }
         }
-        // Verificar que no esté ya activado
         const existing = await prisma_1.default.miServicio.findFirst({
             where: { vendor_id: vendor.id, servicio_id },
         });
         if (existing) {
-            // Si existe pero está desactivado, reactivar
             if (!existing.activo) {
                 const updated = await prisma_1.default.miServicio.update({
                     where: { id: existing.id },
-                    data: { activo: true, precio_venta },
+                    data: { activo: true },
                     include: { servicio: true },
                 });
                 res.json(updated);
@@ -157,11 +176,7 @@ router.post('/mis_servicios', async (req, res) => {
             return;
         }
         const miServicio = await prisma_1.default.miServicio.create({
-            data: {
-                vendor_id: vendor.id,
-                servicio_id,
-                precio_venta,
-            },
+            data: { vendor_id: vendor.id, servicio_id },
             include: { servicio: true },
         });
         res.status(201).json(miServicio);
@@ -169,32 +184,6 @@ router.post('/mis_servicios', async (req, res) => {
     catch (error) {
         console.error('Error activando servicio:', error);
         res.status(500).json({ error: 'Error activando servicio' });
-    }
-});
-/**
- * PUT /api/mis_servicios/:id
- * Actualiza el precio de venta de un servicio del vendedor.
- */
-router.put('/mis_servicios/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { precio_venta } = req.body;
-        const servicio = await prisma_1.default.miServicio.findFirst({
-            where: { id, vendor_id: req.vendor.id },
-        });
-        if (!servicio) {
-            res.status(404).json({ error: 'Servicio no encontrado' });
-            return;
-        }
-        const updated = await prisma_1.default.miServicio.update({
-            where: { id: id },
-            data: { precio_venta },
-            include: { servicio: true },
-        });
-        res.json(updated);
-    }
-    catch (error) {
-        res.status(500).json({ error: 'Error actualizando servicio' });
     }
 });
 /**
@@ -221,6 +210,32 @@ router.delete('/mis_servicios/:id', async (req, res) => {
         res.status(500).json({ error: 'Error desactivando servicio' });
     }
 });
+/**
+ * PATCH /api/mis_servicios/:id
+ * Actualiza el precio de venta del vendedor para un servicio específico.
+ */
+router.patch('/mis_servicios/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { precio_venta } = req.body;
+        const servicio = await prisma_1.default.miServicio.findFirst({
+            where: { id, vendor_id: req.vendor.id },
+        });
+        if (!servicio) {
+            res.status(404).json({ error: 'Servicio no encontrado' });
+            return;
+        }
+        const updated = await prisma_1.default.miServicio.update({
+            where: { id },
+            data: { precio_venta: parseFloat(precio_venta) || 0 },
+            include: { servicio: true },
+        });
+        res.json(updated);
+    }
+    catch (error) {
+        res.status(500).json({ error: 'Error actualizando precio de venta' });
+    }
+});
 // ═══════════════════════════════════════════
 // IMÁGENES
 // ═══════════════════════════════════════════
@@ -240,25 +255,34 @@ router.get('/imagenes', async (req, res) => {
             where: { vendor_id: vendorId, activo: true },
             select: { servicio_id: true },
         });
-        const servicioIds = misServicios.map(s => s.servicio_id);
-        // Buscar imágenes: globales (sin servicio) + las de sus servicios activos
-        const imagenes = await prisma_1.default.imagen.findMany({
+        const uniqueServicioIds = Array.from(new Set(misServicios.map(s => s.servicio_id)));
+        // Buscar imágenes: solo las vinculadas a los servicios activos del vendedor
+        const imagenesRaw = await prisma_1.default.imagen.findMany({
             where: {
                 activo: true,
                 ...(etiqueta ? { etiquetas: { contains: etiqueta } } : {}),
                 OR: [
-                    { servicio_id: null }, // Imágenes globales
-                    { servicio_id: { in: servicioIds } }, // Imágenes de su catálogo
-                ],
+                    { servicio_id: null },
+                    { servicio_id: { in: uniqueServicioIds } }
+                ]
             },
             include: {
                 servicio: { select: { id: true, nombre: true, logo_url: true } }
             },
             orderBy: { creado_en: 'desc' },
         });
+        // Deduplicar imágenes por url_base para evitar que vean "múltiples del mismo" si el admin lo subió varias veces
+        const map = new Map();
+        for (const img of imagenesRaw) {
+            if (!map.has(img.url_base)) {
+                map.set(img.url_base, img);
+            }
+        }
+        const imagenes = Array.from(map.values());
         res.json(imagenes);
     }
     catch (error) {
+        console.error(error);
         res.status(500).json({ error: 'Error obteniendo imágenes' });
     }
 });
@@ -356,35 +380,69 @@ router.get('/partidos', async (req, res) => {
     }
 });
 // ═══════════════════════════════════════════
-// PEDIDOS (Solo Plan Pro)
+// PEDIDOS — Solicitar credenciales
 // ═══════════════════════════════════════════
 /**
  * POST /api/pedidos
- * Crea un pedido automático (requiere Plan Pro).
+ * Crea un pedido de credenciales con cantidad y comprobante de pago.
  */
-router.post('/pedidos', (0, planGuard_1.planGuard)('Pro'), async (req, res) => {
+router.post('/pedidos', cloudinary_1.upload.single('comprobante'), async (req, res) => {
     try {
         const vendor = req.vendor;
-        const { servicio_id, notas } = req.body;
+        // Verificar que el plan permita hacer pedidos
+        if (!vendor.plan.pedidos_automaticos && vendor.role !== 'SUPERADMIN') {
+            res.status(403).json({
+                error: 'Tu plan no incluye pedidos de credenciales',
+                reason: 'plan_limit_reached',
+                current_plan: vendor.plan.nombre,
+                message: `El plan ${vendor.plan.nombre} no incluye solicitud de credenciales. Mejora tu plan para acceder a esta función.`,
+            });
+            return;
+        }
+        console.log(`[PEDIDOS] Request received. Content-Type: ${req.headers['content-type']}`);
+        console.log(`[PEDIDOS] File status: ${req.file ? 'FILE_PRESENT' : 'FILE_MISSING'}`);
+        const { servicio_id, cantidad, notas, comprobante_url: bodyComprobanteUrl, moneda } = req.body;
         if (!servicio_id) {
             res.status(400).json({ error: 'servicio_id es requerido' });
             return;
+        }
+        const cantidadFinal = parseInt(cantidad) || 1;
+        // Verificar Stock
+        const disponibles = await prisma_1.default.credencial.count({
+            where: { servicio_id, asignada_a: null }
+        });
+        if (disponibles === 0 && cantidadFinal > 2) {
+            res.status(400).json({ error: 'Agotado temporalmente. Puedes reservar máximo 2 cuentas hasta reabastecimiento.' });
+            return;
+        }
+        const monedaFinal = moneda || 'BOB';
+        let comprobante_url = bodyComprobanteUrl || null;
+        if (req.file) {
+            comprobante_url = (0, cloudinary_1.getFileUrl)(req.file);
+        }
+        else if (req.files && req.files.length > 0) {
+            comprobante_url = (0, cloudinary_1.getFileUrl)(req.files[0]);
         }
         const pedido = await prisma_1.default.pedido.create({
             data: {
                 vendor_id: vendor.id,
                 servicio_id,
+                cantidad: cantidadFinal,
+                comprobante_url,
+                moneda: monedaFinal,
                 notas: notas || null,
             },
+            include: { servicio: { select: { nombre: true, precio_admin: true } } },
         });
+        console.log(`[PEDIDO] Nuevo pedido creado ID: ${pedido.id} - Comprobante: ${comprobante_url || 'N/A'}`);
         // Notificar al admin sobre nuevo pedido
         try {
             const { OneSignal } = await Promise.resolve().then(() => __importStar(require('../lib/onesignal')));
             await OneSignal.sendNotification({
                 headings: { es: '📦 Nuevo Pedido Recibido', en: '📦 New Order Received' },
                 contents: {
-                    es: `El vendedor @${vendor.alias} ha realizado un nuevo pedido.`,
-                    en: `Vendor @${vendor.alias} placed a new order.`
+                    es: `@${vendor.alias} pidió ${cantidadFinal}x ${pedido.servicio?.nombre || 'servicio'}. Comprobante: ${comprobante_url ? 'Sí' : 'No'}.`,
+                    en: `@${vendor.alias} ordered ${cantidadFinal}x. Receipt: ${comprobante_url ? 'Yes' : 'No'}.`
                 },
                 filters: [{ field: 'tag', key: 'role', relation: '=', value: 'SUPERADMIN' }]
             });
@@ -395,6 +453,7 @@ router.post('/pedidos', (0, planGuard_1.planGuard)('Pro'), async (req, res) => {
         res.status(201).json({
             message: 'Pedido creado. El administrador lo procesará pronto.',
             pedido,
+            monto_total: cantidadFinal * (pedido.servicio?.precio_admin || 0),
         });
     }
     catch (error) {
@@ -402,10 +461,29 @@ router.post('/pedidos', (0, planGuard_1.planGuard)('Pro'), async (req, res) => {
     }
 });
 /**
+ * GET /api/mis_credenciales
+ * Lista todas las credenciales asignadas al vendor, agrupadas por servicio.
+ */
+router.get('/mis_credenciales', async (req, res) => {
+    try {
+        const credenciales = await prisma_1.default.credencial.findMany({
+            where: { asignada_a: req.vendor.id },
+            include: {
+                servicio: { select: { id: true, nombre: true, logo_url: true, categoria: true } },
+            },
+            orderBy: { creado_en: 'desc' },
+        });
+        res.json(credenciales);
+    }
+    catch (error) {
+        res.status(500).json({ error: 'Error obteniendo credenciales' });
+    }
+});
+/**
  * GET /api/pedidos
  * Lista pedidos del vendedor autenticado (requiere Plan Pro).
  */
-router.get('/pedidos', (0, planGuard_1.planGuard)('Pro'), async (req, res) => {
+router.get('/pedidos', async (req, res) => {
     try {
         const pedidos = await prisma_1.default.pedido.findMany({
             where: { vendor_id: req.vendor.id },
@@ -442,6 +520,8 @@ router.get('/perfil', async (req, res) => {
             status: vendor.status,
             rating: vendor.rating,
             biografia: vendor.biografia,
+            whatsapp_api_enabled: vendor.whatsapp_api_enabled,
+            whatsapp_api_token: vendor.whatsapp_api_token,
             fecha_registro: vendor.fecha_registro,
             fecha_vencimiento: vendor.fecha_vencimiento,
         });
@@ -457,7 +537,7 @@ router.get('/perfil', async (req, res) => {
 router.put('/perfil', async (req, res) => {
     try {
         const vendor = req.vendor;
-        const { whatsapp, alias, nombre, logo_url, logo_cloudinary_id, biografia } = req.body;
+        const { whatsapp, alias, nombre, logo_url, logo_cloudinary_id, biografia, whatsapp_api_enabled, whatsapp_api_token, qr_bob, qr_usd, tigo_money } = req.body;
         // Verificar que el nuevo alias no esté en uso
         if (alias && alias !== vendor.alias) {
             const existing = await prisma_1.default.vendor.findFirst({
@@ -477,6 +557,11 @@ router.put('/perfil', async (req, res) => {
                 ...(logo_url !== undefined && { logo_url }),
                 ...(logo_cloudinary_id !== undefined && { logo_cloudinary_id }),
                 ...(biografia !== undefined && { biografia }),
+                ...(whatsapp_api_enabled !== undefined && { whatsapp_api_enabled }),
+                ...(whatsapp_api_token !== undefined && { whatsapp_api_token }),
+                ...(qr_bob !== undefined && { qr_bob }),
+                ...(qr_usd !== undefined && { qr_usd }),
+                ...(tigo_money !== undefined && { tigo_money }),
             },
             include: { plan: true },
         });
@@ -492,6 +577,11 @@ router.put('/perfil', async (req, res) => {
                 texto_limite: updated.plan.texto_limite,
                 biografia: updated.biografia,
                 rating: updated.rating,
+                whatsapp_api_enabled: updated.whatsapp_api_enabled,
+                whatsapp_api_token: updated.whatsapp_api_token,
+                qr_bob: updated.qr_bob,
+                qr_usd: updated.qr_usd,
+                tigo_money: updated.tigo_money,
             },
         });
     }
@@ -704,10 +794,10 @@ router.get('/public/u/:alias', async (req, res) => {
             res.status(404).json({ error: 'Vendedor no encontrado' });
             return;
         }
-        // Verificar el plan por separado
-        const plan = await prisma_1.default.plan.findUnique({ where: { id: vendor.plan_id }, select: { nombre: true } });
-        if (!plan || plan.nombre.toUpperCase() !== 'PRO') {
-            res.status(403).json({ error: 'Este vendedor no tiene enlace público activo' });
+        // Verificar que el plan tenga enlace_publico habilitado
+        const plan = await prisma_1.default.plan.findUnique({ where: { id: vendor.plan_id }, select: { enlace_publico: true, nombre: true } });
+        if (!plan || !plan.enlace_publico) {
+            res.status(403).json({ error: 'Este vendedor no tiene enlace público activo. Requiere un plan con Enlace Público habilitado.' });
             return;
         }
         const servicios = await prisma_1.default.miServicio.findMany({
