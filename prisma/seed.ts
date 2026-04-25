@@ -97,6 +97,22 @@ async function main() {
     }
   });
 
+  const collabTest = await prisma.vendor.upsert({
+    where: { alias: 'colaborador' },
+    update: {},
+    create: {
+      nombre: 'Colaborador Ares',
+      alias: 'colaborador',
+      telefono: '59171111111',
+      password_hash: pass,
+      plan_id: 'plan-vendedor',
+      status: 'ACTIVE',
+      role: 'VENDOR',
+      es_colaborador: true,
+      fecha_vencimiento: new Date('2026-12-31')
+    }
+  });
+
   // ─── Servicios Base ───────────────────────────────────────
   const svcs = [
     { id: 's-netflix', nombre: 'Netflix Premium', categoria: 'STREAMING', precio_sugerido: 35, logo_url: 'https://upload.wikimedia.org/wikipedia/commons/f/ff/Netflix-new-icon.png' },

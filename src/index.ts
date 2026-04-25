@@ -22,10 +22,12 @@ import vendorRoutes from './routes/vendor';
 import adminRoutes from './routes/admin';
 import webhookRoutes from './routes/webhooks';
 import backupRoutes from './routes/backup';
+import marketplaceRoutes from './routes/marketplace';
 
 import { authMiddleware } from './middleware/auth';
 import { subscriptionMiddleware } from './middleware/subscription';
 import { roleGuard } from './middleware/roleGuard';
+import { colaboradorGuard } from './middleware/colaboradorGuard';
 import { upload, getFileUrl } from './lib/cloudinary';
 import prisma from './lib/prisma';
 import { OneSignal } from './lib/onesignal';
@@ -89,6 +91,7 @@ app.use('/api/admin/backups',
 app.use('/api/admin',
   authMiddleware,
   roleGuard('SUPERADMIN'),
+  colaboradorGuard,
   adminRoutes
 );
 
@@ -160,6 +163,12 @@ app.use('/api',
   authMiddleware,
   subscriptionMiddleware,
   vendorRoutes
+);
+
+app.use('/api/marketplace',
+  authMiddleware,
+  subscriptionMiddleware,
+  marketplaceRoutes
 );
 
 // ─── Error Handler Global ─────────────────────────────────────

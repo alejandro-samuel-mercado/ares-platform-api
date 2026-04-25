@@ -1,10 +1,11 @@
 /**
  * Middleware: RoleGuard
  *
- * Restringe endpoints exclusivos para superadmin.
+ * Restringe endpoints exclusivos para superadmin y colaboradores.
  * Se usa para todas las rutas del panel de administración.
  *
- * @param role - Rol requerido: 'SUPERADMIN'
+ * - SUPERADMIN: acceso total
+ * - es_colaborador: acceso limitado (filtrado por colaboradorGuard)
  */
 
 import { Request, Response, NextFunction } from 'express';
@@ -18,16 +19,23 @@ export function roleGuard(role: string) {
       return;
     }
 
-    if (vendor.role !== role) {
-      res.status(403).json({
-        error: 'Acceso denegado',
-        reason: 'role_required',
-        message: 'No tienes permisos para acceder a este recurso.',
-      });
+    // Allow SUPERADMIN always
+    if (vendor.role === role) {
+      next();
       return;
     }
 
-    next();
+    // Allow colaboradores into admin panel (restricted by colaboradorGuard)
+    if (role === 'SUPERADMIN' && vendor.es_colaborador === true) {
+      next();
+      return;
+    }
+
+    res.status(403).json({
+      error: 'Acceso denegado',
+      reason: 'role_required',
+      message: 'No tienes permisos para acceder a este recurso.',
+    });
   };
 }
 

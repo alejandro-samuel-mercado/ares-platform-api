@@ -200,12 +200,38 @@ router.get('/vendors', async (req: Request, res: Response): Promise<void> => {
         plan_id: v.plan_id,
         status: v.status,
         role: v.role,
+        es_colaborador: v.es_colaborador,
         fecha_registro: v.fecha_registro,
         fecha_vencimiento: v.fecha_vencimiento,
       }))
     );
   } catch (error) {
     res.status(500).json({ error: 'Error obteniendo vendedores' });
+  }
+});
+
+/**
+ * PATCH /api/admin/vendors/:id/colaborador
+ * Toggle es_colaborador field for a vendor (SUPERADMIN only).
+ */
+router.patch('/vendors/:id/colaborador', async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Only SUPERADMIN can toggle this
+    if (req.vendor?.role !== 'SUPERADMIN') {
+      res.status(403).json({ error: 'Solo el administrador puede modificar colaboradores' });
+      return;
+    }
+    const { id } = req.params as { id: string };
+    const vendor = await prisma.vendor.findUnique({ where: { id } });
+    if (!vendor) { res.status(404).json({ error: 'Vendedor no encontrado' }); return; }
+
+    const updated = await prisma.vendor.update({
+      where: { id },
+      data: { es_colaborador: !vendor.es_colaborador },
+    });
+    res.json({ message: `Colaborador ${updated.es_colaborador ? 'activado' : 'desactivado'}`, es_colaborador: updated.es_colaborador });
+  } catch (error) {
+    res.status(500).json({ error: 'Error actualizando colaborador' });
   }
 });
 
@@ -421,9 +447,18 @@ router.put('/planes/:id', async (req: Request, res: Response): Promise<void> => 
 router.get('/servicios', async (_req: Request, res: Response): Promise<void> => {
   try {
     const servicios = await prisma.servicioBase.findMany({
+      include: {
+        proveedor: {
+          select: { alias: true, nombre: true }
+        }
+      },
       orderBy: { nombre: 'asc' },
     });
-    res.json(servicios);
+    res.json(servicios.map(s => ({
+      ...s,
+      proveedor_alias: s.proveedor?.alias || 'SISTEMA',
+      proveedor_nombre: s.proveedor?.nombre || 'Plataforma Ares'
+    })));
   } catch (error) {
     res.status(500).json({ error: 'Error obteniendo servicios' });
   }
@@ -809,7 +844,8 @@ router.get('/partidos', async (_req: Request, res: Response): Promise<void> => {
  */
 router.post('/partidos', upload.fields([
   { name: 'logo_local', maxCount: 1 },
-  { name: 'logo_visita', maxCount: 1 }
+  { name: 'logo_visita', maxCount: 1 },
+  { name: 'imagen_personalizada', maxCount: 1 }
 ]), async (req: Request, res: Response): Promise<void> => {
   try {
     const data = { ...req.body };
@@ -820,6 +856,9 @@ router.post('/partidos', upload.fields([
     }
     if (files['logo_visita']) {
       data.logo_visita = files['logo_visita'][0].path;
+    }
+    if (files['imagen_personalizada']) {
+      data.imagen_personalizada = files['imagen_personalizada'][0].path;
     }
 
     // Convert boolean strings if they come from FormData
@@ -851,7 +890,8 @@ router.post('/partidos', upload.fields([
  */
 router.put('/partidos/:id', upload.fields([
   { name: 'logo_local', maxCount: 1 },
-  { name: 'logo_visita', maxCount: 1 }
+  { name: 'logo_visita', maxCount: 1 },
+  { name: 'imagen_personalizada', maxCount: 1 }
 ]), async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params as { id: string };
@@ -863,6 +903,9 @@ router.put('/partidos/:id', upload.fields([
     }
     if (files['logo_visita']) {
       data.logo_visita = files['logo_visita'][0].path;
+    }
+    if (files['imagen_personalizada']) {
+      data.imagen_personalizada = files['imagen_personalizada'][0].path;
     }
 
     // Convert boolean strings
@@ -912,12 +955,17 @@ router.put('/ajustes', upload.any(), async (req: Request, res: Response): Promis
     // Mapeo seguro de campos de texto
     const allowedFields = [
       'nombre_plataforma', 'tigo_money_numero', 'texto_legal', 
-      'noticia_global', 'whatsapp_soporte', 'qr_cobro_url', 'logo_url'
+      'noticia_global', 'whatsapp_soporte', 'qr_cobro_url', 'logo_url',
+      'qr_cobro_bob', 'qr_cobro_usd', 'tasa_cambio_bob'
     ];
 
     allowedFields.forEach(field => {
       if (req.body[field] !== undefined) {
-        data[field] = req.body[field];
+        if (field === 'tasa_cambio_bob') {
+          data[field] = parseFloat(req.body[field]) || 6.96;
+        } else {
+          data[field] = req.body[field];
+        }
       }
     });
 
@@ -930,7 +978,10 @@ router.put('/ajustes', upload.any(), async (req: Request, res: Response): Promis
           if (file.fieldname === 'qr' || file.fieldname === 'archivo_qr' || (files.length === 1 && !data.qr_cobro_url)) {
              data.qr_cobro_url = filePath;
           }
-        } 
+        }
+
+        if (file.fieldname === 'qr_bob') data.qr_cobro_bob = filePath;
+        if (file.fieldname === 'qr_usd') data.qr_cobro_usd = filePath;
         
         if (file.fieldname === 'logo') {
           data.logo_url = filePath;

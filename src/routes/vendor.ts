@@ -23,6 +23,26 @@ import { upload, getFileUrl } from '../lib/cloudinary';
 const router = Router();
 
 // ═══════════════════════════════════════════
+// PLANES
+// ═══════════════════════════════════════════
+
+/**
+ * GET /api/planes
+ * Lista todos los planes activos disponibles para el vendedor.
+ */
+router.get('/planes', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const planes = await prisma.plan.findMany({
+      where: { activo: true },
+      orderBy: { precio: 'asc' },
+    });
+    res.json(planes);
+  } catch (error) {
+    res.status(500).json({ error: 'Error obteniendo planes' });
+  }
+});
+
+// ═══════════════════════════════════════════
 // SERVICIOS BASE (Catálogo maestro)
 // ═══════════════════════════════════════════
 
@@ -34,6 +54,9 @@ router.get('/servicios_base', async (req: Request, res: Response): Promise<void>
   try {
     const servicios = await prisma.servicioBase.findMany({
       where: { activo: true },
+      include: {
+        _count: { select: { credenciales: { where: { asignadaAId: null } } } }
+      },
       orderBy: { nombre: 'asc' },
     });
     res.json(servicios);
@@ -55,7 +78,13 @@ router.get('/mis_servicios', async (req: Request, res: Response): Promise<void> 
   try {
     const servicios = await prisma.miServicio.findMany({
       where: { vendor_id: req.vendor!.id },
-      include: { servicio: true },
+      include: { 
+        servicio: {
+          include: {
+            _count: { select: { credenciales: { where: { asignadaAId: null } } } }
+          }
+        } 
+      },
       orderBy: { creado_en: 'desc' },
     });
     res.json(servicios);
@@ -380,7 +409,7 @@ router.post('/pedidos', upload.single('comprobante'), async (req: Request, res: 
     console.log(`[PEDIDOS] Request received. Content-Type: ${req.headers['content-type']}`);
     console.log(`[PEDIDOS] File status: ${req.file ? 'FILE_PRESENT' : 'FILE_MISSING'}`);
     
-    const { servicio_id, cantidad, notas, comprobante_url: bodyComprobanteUrl } = req.body;
+    const { servicio_id, cantidad, notas, comprobante_url: bodyComprobanteUrl, moneda } = req.body;
 
     if (!servicio_id) {
       res.status(400).json({ error: 'servicio_id es requerido' });
@@ -388,6 +417,18 @@ router.post('/pedidos', upload.single('comprobante'), async (req: Request, res: 
     }
 
     const cantidadFinal = parseInt(cantidad) || 1;
+
+    // Verificar Stock
+    const disponibles = await prisma.credencial.count({
+      where: { servicio_id, asignadaAId: null }
+    });
+
+    if (disponibles === 0 && cantidadFinal > 2) {
+      res.status(400).json({ error: 'Agotado temporalmente. Puedes reservar máximo 2 cuentas hasta reabastecimiento.' });
+      return;
+    }
+
+    const monedaFinal = moneda || 'BOB';
     let comprobante_url: string | null = bodyComprobanteUrl || null;
     if (req.file) {
       comprobante_url = getFileUrl(req.file);
@@ -401,6 +442,7 @@ router.post('/pedidos', upload.single('comprobante'), async (req: Request, res: 
         servicio_id,
         cantidad: cantidadFinal,
         comprobante_url,
+        moneda: monedaFinal,
         notas: notas || null,
       },
       include: { servicio: { select: { nombre: true, precio_admin: true } } },
@@ -513,7 +555,8 @@ router.put('/perfil', async (req: Request, res: Response): Promise<void> => {
     const vendor = req.vendor!;
     const { 
       whatsapp, alias, nombre, logo_url, logo_cloudinary_id, biografia,
-      whatsapp_api_enabled, whatsapp_api_token 
+      whatsapp_api_enabled, whatsapp_api_token,
+      qr_bob, qr_usd, tigo_money
     } = req.body;
 
     // Verificar que el nuevo alias no esté en uso
@@ -538,6 +581,9 @@ router.put('/perfil', async (req: Request, res: Response): Promise<void> => {
         ...(biografia !== undefined && { biografia }),
         ...(whatsapp_api_enabled !== undefined && { whatsapp_api_enabled }),
         ...(whatsapp_api_token !== undefined && { whatsapp_api_token }),
+        ...(qr_bob !== undefined && { qr_bob }),
+        ...(qr_usd !== undefined && { qr_usd }),
+        ...(tigo_money !== undefined && { tigo_money }),
       },
       include: { plan: true },
     });
@@ -556,6 +602,9 @@ router.put('/perfil', async (req: Request, res: Response): Promise<void> => {
         rating: updated.rating,
         whatsapp_api_enabled: updated.whatsapp_api_enabled,
         whatsapp_api_token: updated.whatsapp_api_token,
+        qr_bob: updated.qr_bob,
+        qr_usd: updated.qr_usd,
+        tigo_money: updated.tigo_money,
       },
     });
   } catch (error) {

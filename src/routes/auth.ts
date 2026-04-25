@@ -156,6 +156,7 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
         texto_limite: vendor.plan.texto_limite,
         plan_id: vendor.plan_id,
         role: vendor.role,
+        es_colaborador: vendor.es_colaborador,
         status: vendor.status,
         fecha_vencimiento: vendor.fecha_vencimiento,
       },

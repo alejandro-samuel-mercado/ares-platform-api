@@ -33,6 +33,7 @@ model Vendor {
   rating             Float    @default(5.0)
   biografia          String? // Descripción comercial para el marketplace
   role               String   @default("VENDOR") // SUPERADMIN | VENDOR | GUEST
+  es_colaborador     Boolean  @default(false)    // Acceso limitado al panel admin
 
   plan          Plan           @relation(fields: [plan_id], references: [id])
   mis_servicios MiServicio[]
@@ -186,11 +187,12 @@ model Partido {
   equipo_visita String
   logo_local    String?
   logo_visita   String?
-  canal         String
-  liga          String?
-  requiere_iptv Boolean  @default(false)
-  push_enviado  Boolean  @default(false)
-  activo        Boolean  @default(true)
+  canal                 String
+  liga                  String?
+  requiere_iptv         Boolean  @default(false)
+  push_enviado          Boolean  @default(false)
+  imagen_personalizada  String?  // Custom flyer uploaded by Admin
+  activo                Boolean  @default(true)
 }
 
 /// ──────────────────────────────────────────
@@ -218,6 +220,7 @@ model Pedido {
   cantidad         Int       @default(1)
   comprobante_url  String?   // Foto del comprobante de pago por credenciales
   notas            String?
+  moneda           String    @default("BOB") // Moneda seleccionada: BOB o USD
   status           String    @default("PENDIENTE") // PENDIENTE | EN_PROCESO | COMPLETADO | CANCELADO
   respuesta_admin  String?   // Respuesta del admin (instrucciones, etc.)
   respondido_en    DateTime? // Timestamp de cuándo se respondió
@@ -239,6 +242,7 @@ model Pago {
   monto           Float
   plan_id         String
   comprobante_url String?
+  moneda          String    @default("BOB") // Moneda seleccionada: BOB o USD
   status          String    @default("PENDIENTE") // PENDIENTE | CONFIRMADO | RECHAZADO
   confirmado_en   DateTime?
   notas_admin     String?
@@ -255,7 +259,10 @@ model Pago {
 /// ──────────────────────────────────────────
 model AjustesPlataforma {
   id                String  @id @default("1")
-  qr_cobro_url      String  @default("")
+  qr_cobro_url      String  @default("")      // Legacy URL
+  qr_cobro_bob      String  @default("")      // Nuevo QR exclusivo para Bs
+  qr_cobro_usd      String  @default("")      // Nuevo QR exclusivo para USD
+  tasa_cambio_bob   Float   @default(6.96)    // Tasa de cambio base
   tigo_money_numero String  @default("")
   texto_legal       String  @default("")
   nombre_plataforma String  @default("Ares")
