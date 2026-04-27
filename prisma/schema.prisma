@@ -310,3 +310,19 @@ model Categoria {
   creado_en DateTime @default(now())
 }
 
+
+/// ──────────────────────────────────────────
+/// Modelo: ClickMarketplace
+/// Registro de interés en servicios del marketplace (Analytics).
+/// ──────────────────────────────────────────
+model ClickMarketplace {
+  id           String   @id @default(cuid())
+  vendor_id    String
+  servicio_id  String
+  proveedor_id String
+  creado_en    DateTime @default(now())
+
+  @@index([vendor_id])
+  @@index([servicio_id])
+  @@index([proveedor_id])
+}

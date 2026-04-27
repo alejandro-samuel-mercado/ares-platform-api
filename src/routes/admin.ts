@@ -1071,7 +1071,7 @@ router.get('/analytics/intentions', async (_req: Request, res: Response): Promis
 
         // Enriquecer con nombre del servicio
         const enriched = await Promise.all(
-            clicks.map(async (c) => {
+            clicks.map(async (c: any) => {
                 const servicio = await prisma.servicioBase.findUnique({
                     where: { id: c.servicio_id },
                     select: { nombre: true, logo_url: true, proveedor_id: true },
