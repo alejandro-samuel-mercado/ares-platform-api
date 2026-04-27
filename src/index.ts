@@ -23,6 +23,7 @@ import adminRoutes from './routes/admin';
 import webhookRoutes from './routes/webhooks';
 import backupRoutes from './routes/backup';
 import marketplaceRoutes from './routes/marketplace';
+import maestrosRoutes from './routes/maestros';
 
 import { authMiddleware } from './middleware/auth';
 import { subscriptionMiddleware } from './middleware/subscription';
@@ -77,6 +78,11 @@ app.get('/api/ajustes-publicos', async (_req, res) => {
       logo_url: ajustes?.logo_url || '',
       noticia_global: ajustes?.noticia_global || 'Bienvenido a Ares v2.',
       whatsapp_soporte: ajustes?.whatsapp_soporte || '',
+      watermark_enabled: ajustes?.watermark_enabled || false,
+      watermark_type: ajustes?.watermark_type || 'TEXT',
+      watermark_text: ajustes?.watermark_text || 'Ares Platform',
+      watermark_image_url: ajustes?.watermark_image_url || '',
+      watermark_opacity: ajustes?.watermark_opacity ?? 0.5,
     });
   } catch {
     res.status(500).json({ error: 'Error obteniendo ajustes' });
@@ -94,7 +100,8 @@ app.use('/api/admin',
   authMiddleware,
   roleGuard('SUPERADMIN'),
   colaboradorGuard,
-  adminRoutes
+  adminRoutes,
+  maestrosRoutes // Admin CRUD
 );
 
 // ─── Rutas Vendor (auth + suscripción) ────────────────────────
@@ -170,7 +177,8 @@ app.use('/api/marketplace',
 app.use('/api',
   authMiddleware,
   subscriptionMiddleware,
-  vendorRoutes
+  vendorRoutes,
+  maestrosRoutes // Read-only for vendors
 );
 
 // ─── Error Handler Global ─────────────────────────────────────

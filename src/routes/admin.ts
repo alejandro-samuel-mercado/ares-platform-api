@@ -956,13 +956,18 @@ router.put('/ajustes', upload.any(), async (req: Request, res: Response): Promis
     const allowedFields = [
       'nombre_plataforma', 'tigo_money_numero', 'texto_legal', 
       'noticia_global', 'whatsapp_soporte', 'qr_cobro_url', 'logo_url',
-      'qr_cobro_bob', 'qr_cobro_usd', 'tasa_cambio_bob'
+      'qr_cobro_bob', 'qr_cobro_usd', 'tasa_cambio_bob',
+      'watermark_enabled', 'watermark_type', 'watermark_text', 'watermark_opacity'
     ];
 
     allowedFields.forEach(field => {
       if (req.body[field] !== undefined) {
-        if (field === 'tasa_cambio_bob') {
-          data[field] = parseFloat(req.body[field]) || 6.96;
+        if (field === 'tasa_cambio_bob' || field === 'watermark_opacity') {
+          data[field] = parseFloat(req.body[field]);
+          if (field === 'tasa_cambio_bob' && isNaN(data[field])) data[field] = 6.96;
+          if (field === 'watermark_opacity' && isNaN(data[field])) data[field] = 0.5;
+        } else if (field === 'watermark_enabled') {
+          data[field] = req.body[field] === 'true' || req.body[field] === true;
         } else {
           data[field] = req.body[field];
         }
@@ -985,6 +990,10 @@ router.put('/ajustes', upload.any(), async (req: Request, res: Response): Promis
         
         if (file.fieldname === 'logo') {
           data.logo_url = filePath;
+        }
+
+        if (file.fieldname === 'watermark_archivo') {
+          data.watermark_image_url = filePath;
         }
       });
     }

@@ -44,7 +44,6 @@ model Vendor {
   pagos         Pago[]
   credenciales  Credencial[]
   servicios_aportados ServicioBase[] @relation("ServiciosAportados")
-  clicks_marketplace  ClickMarketplace[]
 }
 
 /// ──────────────────────────────────────────
@@ -62,6 +61,7 @@ model Plan {
   pedidos_automaticos   Boolean  @default(false)
   enlace_publico        Boolean  @default(false)
   marketplace_proveedor Boolean  @default(false)
+  watermark_enabled     Boolean  @default(false)
   activo                Boolean  @default(true)
 
   vendors Vendor[]
@@ -77,7 +77,9 @@ model Estreno {
   id          String   @id @default(cuid())
   titulo      String
   descripcion String?
-  plataforma  String   // NETFLIX | DISNEY | HBO | AMAZON | OTHER
+  plataforma  String   // Legacy field (NETFLIX | DISNEY | HBO | AMAZON | OTHER)
+  plataforma_id String?
+  plataforma_ref Plataforma? @relation(fields: [plataforma_id], references: [id])
   fecha_estreno DateTime?
   imagen_url  String?
   activo      Boolean  @default(true)
@@ -111,7 +113,6 @@ model ServicioBase {
   mis_servicios MiServicio[]
   credenciales  Credencial[]
   proveedor     Vendor?        @relation("ServiciosAportados", fields: [proveedor_id], references: [id])
-  clicks        ClickMarketplace[]
   imagenes      Imagen[]
   pedidos       Pedido[]
 }
@@ -273,21 +274,39 @@ model AjustesPlataforma {
   logo_url          String?
   noticia_global    String  @default("Bienvenido a Ares v2. Revisa los nuevos partidos.")
   whatsapp_soporte  String  @default("")
+  
+  // -- Configuración de Marca de Agua --
+  watermark_enabled   Boolean @default(false)
+  watermark_type      String  @default("TEXT") // TEXT | IMAGE
+  watermark_text      String  @default("Ares Platform")
+  watermark_image_url String  @default("")
+  watermark_opacity   Float   @default(0.5)
 }
 
 /// ──────────────────────────────────────────
-/// Modelo: ClickMarketplace (Analítica Comercial)
-/// Rastrea intenciones de compra de Vendedores sobre
-/// servicios ofrecidos por Proveedores en el Marketplace.
+/// Modelo: Plataforma
+/// Entidades de servicios streaming (Netflix, Disney+, etc.)
 /// ──────────────────────────────────────────
-model ClickMarketplace {
-  id           String   @id @default(cuid())
-  vendor_id    String
-  servicio_id  String
-  proveedor_id String
+model Plataforma {
+  id        String   @id @default(cuid())
+  nombre    String   @unique
+  color     String   @default("#6B7280")
+  emoji     String?
+  activo    Boolean  @default(true)
+  creado_en DateTime @default(now())
 
-  creado_en    DateTime @default(now())
-
-  vendor   Vendor       @relation(fields: [vendor_id], references: [id], onDelete: Cascade)
-  servicio ServicioBase @relation(fields: [servicio_id], references: [id], onDelete: Cascade)
+  estrenos  Estreno[]
 }
+
+/// ──────────────────────────────────────────
+/// Modelo: Categoria
+/// Categorías para servicios o imágenes.
+/// ──────────────────────────────────────────
+model Categoria {
+  id        String   @id @default(cuid())
+  nombre    String   @unique
+  tipo      String   @default("SERVICIO") // SERVICIO | IMAGEN | OTRO
+  activo    Boolean  @default(true)
+  creado_en DateTime @default(now())
+}
+

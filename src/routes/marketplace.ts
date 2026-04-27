@@ -122,9 +122,6 @@ router.get('/mine', planGuard('Proveedor'), async (req: Request, res: Response):
   try {
     const servicios = await prisma.servicioBase.findMany({
       where: { proveedor_id: req.vendor!.id },
-      include: {
-        _count: { select: { clicks: true } }
-      },
       orderBy: { nombre: 'asc' }
     });
 
@@ -135,7 +132,10 @@ router.get('/mine', planGuard('Proveedor'), async (req: Request, res: Response):
       const total = await prisma.credencial.count({
         where: { servicio_id: s.id }
       });
-      return { ...s, stock: available, total_credenciales: total };
+      const leads = await prisma.miServicio.count({
+        where: { servicio_id: s.id }
+      });
+      return { ...s, stock: available, total_credenciales: total, leads };
     }));
 
     res.json(withStock);
