@@ -539,10 +539,18 @@ router.post('/servicios', upload.single('logo'), async (req: Request, res: Respo
       data.logo_url = getFileUrl(file);
     }
 
+    // Convert types from FormData (strings) to Prisma types
+    if (data.precio_admin) data.precio_admin = parseFloat(data.precio_admin);
+    if (data.precio_sugerido) data.precio_sugerido = parseFloat(data.precio_sugerido);
+    else data.precio_sugerido = data.precio_admin || 0; // Fallback if missing
+    
+    if (data.activo !== undefined) data.activo = String(data.activo) === 'true';
+    if (data.es_iptv_propio !== undefined) data.es_iptv_propio = String(data.es_iptv_propio) === 'true';
+
     const servicio = await prisma.servicioBase.create({ data });
     res.status(201).json(servicio);
   } catch (error) {
-    console.error(error);
+    console.error("Error creating service:", error);
     res.status(500).json({ error: 'Error creando servicio' });
   }
 });
@@ -558,8 +566,15 @@ router.put('/servicios/:id', upload.single('logo'), async (req: Request, res: Re
     const file = req.file as any;
 
     if (file) {
-      data.logo_url = file.path;
+      data.logo_url = getFileUrl(file);
     }
+
+    // Convert types from FormData (strings) to Prisma types
+    if (data.precio_admin) data.precio_admin = parseFloat(data.precio_admin);
+    if (data.precio_sugerido) data.precio_sugerido = parseFloat(data.precio_sugerido);
+    
+    if (data.activo !== undefined) data.activo = String(data.activo) === 'true';
+    if (data.es_iptv_propio !== undefined) data.es_iptv_propio = String(data.es_iptv_propio) === 'true';
 
     const servicio = await prisma.servicioBase.update({
       where: { id },
@@ -567,7 +582,7 @@ router.put('/servicios/:id', upload.single('logo'), async (req: Request, res: Re
     });
     res.json(servicio);
   } catch (error) {
-    console.error(error);
+    console.error("Error updating service:", error);
     res.status(500).json({ error: 'Error actualizando servicio' });
   }
 });

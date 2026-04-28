@@ -96,7 +96,7 @@ model ServicioBase {
   nombre           String
   logo_url         String
   descripcion_base String
-  precio_sugerido  Float   // Precio de referencia (visible para vendors)
+  precio_sugerido  Float?  // Precio de referencia (opcional)
   precio_admin     Float   @default(0) // Precio que el admin cobra al vendor por credencial
   categoria        String  @default("STREAMING") // STREAMING | IPTV | OTRO
   es_iptv_propio   Boolean @default(false)
