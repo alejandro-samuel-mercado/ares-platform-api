@@ -13,14 +13,13 @@
  * Todas las queries filtran por vendor_id del JWT (multi-tenant).
  */
 
-import { Router, Request, Response } from 'express';
-import prisma from '../lib/prisma';
+import { Request, Response, Router } from 'express';
+import { getFileUrl, upload } from '../lib/cloudinary';
 import { OneSignal } from '../lib/onesignal';
-import { planGuard } from '../middleware/planGuard';
+import prisma from '../lib/prisma';
 import { applyWatermark } from '../lib/watermark';
-import { upload, getFileUrl } from '../lib/cloudinary';
 
-const router = Router();
+const router:Router = Router();
 
 // ═══════════════════════════════════════════
 // PLANES
@@ -566,16 +565,11 @@ router.delete('/pedidos/:id', async (req: Request, res: Response): Promise<void>
  */
 router.get('/perfil', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { PrismaClient } = await import('@prisma/client');
-    const localPrisma = new PrismaClient();
-    
-    // Forzamos una lectura fresca de la DB para evitar datos cacheados en req.vendor
-    const vendor = await localPrisma.vendor.findUnique({
+    // Lectura fresca usando el prisma global (con pool de conexiones)
+    const vendor = await prisma.vendor.findUnique({
       where: { id: req.vendor!.id },
       include: { plan: true }
     });
-
-    await localPrisma.$disconnect();
 
     if (!vendor) {
       res.status(404).json({ error: 'Vendor no encontrado' });
@@ -599,6 +593,7 @@ router.get('/perfil', async (req: Request, res: Response): Promise<void> => {
       texto_limite: (vendor as any).plan?.texto_limite,
       plan_id: vendor.plan_id,
       role: vendor.role,
+      es_colaborador: (vendor as any).es_colaborador || false,
       status: vendor.status,
       rating: vendor.rating,
       biografia: vendor.biografia,
@@ -610,11 +605,6 @@ router.get('/perfil', async (req: Request, res: Response): Promise<void> => {
       fecha_registro: vendor.fecha_registro,
       fecha_vencimiento: vendor.fecha_vencimiento,
     };
-    
-    console.log('[API] GET /perfil fresco:', {
-      qr_bob: responseData.qr_bob,
-      tigo_money: responseData.tigo_money
-    });
     
     res.json(responseData);
   } catch (error) {
@@ -635,11 +625,7 @@ router.put('/perfil',
   ]),
   async (req: Request, res: Response): Promise<void> => {
   try {
-    const { PrismaClient } = await import('@prisma/client');
-    const localPrisma = new PrismaClient();
-    
     const vendor = req.vendor!;
-    console.log('[API] Perfil Update for:', vendor.alias);
     
     const { 
       whatsapp, alias, nombre, logo_url, logo_cloudinary_id, biografia,
@@ -654,11 +640,9 @@ router.put('/perfil',
     const finalQrBobUrl = (files?.qr_bob && files.qr_bob[0]) ? getFileUrl(files.qr_bob[0]) : qr_bob_url;
     const finalQrUsdUrl = (files?.qr_usd && files.qr_usd[0]) ? getFileUrl(files.qr_usd[0]) : qr_usd_url;
 
-    console.log('[API] Fields Resolved:', { finalLogoUrl, finalQrBobUrl, finalQrUsdUrl, whatsapp_api_enabled, tigo_money });
-
     // Verificar que el nuevo alias no esté en uso
     if (alias && alias !== vendor.alias) {
-      const existing = await localPrisma.vendor.findFirst({
+      const existing = await prisma.vendor.findFirst({
         where: { alias: alias.toLowerCase(), id: { not: vendor.id } },
       });
       if (existing) {
@@ -687,15 +671,11 @@ router.put('/perfil',
       ...(tigo_money !== undefined && { tigo_money }),
     };
 
-    console.log('[API] Prisma Update Data:', updateData);
-
-    const updated = await localPrisma.vendor.update({
+    const updated = await prisma.vendor.update({
       where: { id: vendor.id },
       data: updateData,
       include: { plan: true },
     });
-
-    await localPrisma.$disconnect();
 
     res.json({
       message: 'Perfil actualizado',

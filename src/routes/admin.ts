@@ -14,15 +14,14 @@
  * Todas las rutas requieren rol SUPERADMIN.
  */
 
-import { Request, Response, Router } from 'express';
-import prisma from '../lib/prisma';
-import { upload, getFileUrl } from '../lib/cloudinary';
-import { OneSignal } from '../lib/onesignal';
-import fs from 'fs';
-import path from 'path';
 import bcrypt from 'bcryptjs';
+import { Request, Response, Router } from 'express';
+import fs from 'fs';
+import { getFileUrl, upload } from '../lib/cloudinary';
+import { OneSignal } from '../lib/onesignal';
+import prisma from '../lib/prisma';
 
-const router = Router();
+const router:Router = Router();
 const LOG_FILE = '/tmp/ares_debug_admin.log';
 
 // Logger para depurar problemas de persistencia
@@ -997,6 +996,21 @@ router.put('/partidos/:id', upload.fields([
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error actualizando partido' });
+  }
+});
+
+/**
+ * DELETE /api/admin/partidos/:id
+ * Elimina un partido permanentemente.
+ */
+router.delete('/partidos/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params as { id: string };
+    await prisma.partido.delete({ where: { id } });
+    res.json({ message: 'Partido eliminado correctamente' });
+  } catch (error) {
+    console.error('Error eliminando partido:', error);
+    res.status(500).json({ error: 'Error eliminando partido' });
   }
 });
 
