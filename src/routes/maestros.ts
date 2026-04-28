@@ -51,15 +51,15 @@ router.put('/plataformas/:id', async (req: Request, res: Response) => {
 
 // Eliminar plataforma
 router.delete('/plataformas/:id', async (req: Request, res: Response) => {
+    const id = req.params.id as string;
     try {
-        const id = req.params.id as string;
         await prisma.plataforma.delete({ where: { id } });
         res.json({ success: true });
     } catch (err) {
         // Fallback to soft-delete if relations prevent hard delete
         try {
             await prisma.plataforma.update({
-                where: { id: req.params.id },
+                where: { id },
                 data: { activo: false }
             });
             res.json({ success: true, softDelete: true });
@@ -122,14 +122,14 @@ router.put('/categorias/:id', async (req: Request, res: Response) => {
 
 // Eliminar categoría
 router.delete('/categorias/:id', async (req: Request, res: Response) => {
+    const id = req.params.id as string;
     try {
-        const id = req.params.id as string;
         await prisma.categoria.delete({ where: { id } });
         res.json({ success: true });
     } catch (err) {
         try {
             await prisma.categoria.update({
-                where: { id: req.params.id },
+                where: { id },
                 data: { activo: false }
             });
             res.json({ success: true, softDelete: true });
