@@ -59,6 +59,7 @@ const admin_1 = __importDefault(require("./routes/admin"));
 const webhooks_1 = __importDefault(require("./routes/webhooks"));
 const backup_1 = __importDefault(require("./routes/backup"));
 const marketplace_1 = __importDefault(require("./routes/marketplace"));
+const maestros_1 = __importDefault(require("./routes/maestros"));
 const auth_2 = require("./middleware/auth");
 const subscription_1 = require("./middleware/subscription");
 const roleGuard_1 = require("./middleware/roleGuard");
@@ -98,11 +99,18 @@ app.get('/api/ajustes-publicos', async (_req, res) => {
         await prisma.$disconnect();
         res.json({
             qr_cobro_url: ajustes?.qr_cobro_url || '',
+            qr_cobro_bob: ajustes?.qr_cobro_bob || '',
+            qr_cobro_usd: ajustes?.qr_cobro_usd || '',
             tigo_money_numero: ajustes?.tigo_money_numero || '',
             nombre_plataforma: ajustes?.nombre_plataforma || 'Ares',
             logo_url: ajustes?.logo_url || '',
             noticia_global: ajustes?.noticia_global || 'Bienvenido a Ares v2.',
             whatsapp_soporte: ajustes?.whatsapp_soporte || '',
+            watermark_enabled: ajustes?.watermark_enabled || false,
+            watermark_type: ajustes?.watermark_type || 'TEXT',
+            watermark_text: ajustes?.watermark_text || 'Ares Platform',
+            watermark_image_url: ajustes?.watermark_image_url || '',
+            watermark_opacity: ajustes?.watermark_opacity ?? 0.5,
         });
     }
     catch {
@@ -111,7 +119,8 @@ app.get('/api/ajustes-publicos', async (_req, res) => {
 });
 // ─── Rutas Admin (auth + suscripción + rol SUPERADMIN) ────────
 app.use('/api/admin/backups', auth_2.authMiddleware, (0, roleGuard_1.roleGuard)('SUPERADMIN'), backup_1.default);
-app.use('/api/admin', auth_2.authMiddleware, (0, roleGuard_1.roleGuard)('SUPERADMIN'), colaboradorGuard_1.colaboradorGuard, admin_1.default);
+app.use('/api/admin', auth_2.authMiddleware, (0, roleGuard_1.roleGuard)('SUPERADMIN'), colaboradorGuard_1.colaboradorGuard, admin_1.default, maestros_1.default // Admin CRUD
+);
 // ─── Rutas Vendor (auth + suscripción) ────────────────────────
 // Nota: /api/pagos/comprobante se exime del subscriptionMiddleware
 app.post('/api/pagos/comprobante', auth_2.authMiddleware, cloudinary_1.upload.single('comprobante'), async (req, res) => {
@@ -165,8 +174,9 @@ app.post('/api/pagos/comprobante', auth_2.authMiddleware, cloudinary_1.upload.si
         });
     }
 });
-app.use('/api', auth_2.authMiddleware, subscription_1.subscriptionMiddleware, vendor_1.default);
 app.use('/api/marketplace', auth_2.authMiddleware, subscription_1.subscriptionMiddleware, marketplace_1.default);
+app.use('/api', auth_2.authMiddleware, subscription_1.subscriptionMiddleware, vendor_1.default, maestros_1.default // Read-only for vendors
+);
 // ─── Error Handler Global ─────────────────────────────────────
 app.use((err, _req, res, _next) => {
     console.error('🔥 Error no manejado:', err);

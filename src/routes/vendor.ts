@@ -524,6 +524,38 @@ router.get('/pedidos', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+/**
+ * DELETE /api/pedidos/:id
+ * Elimina un pedido del propio vendedor.
+ */
+router.delete('/pedidos/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params as { id: string };
+    const vendor = req.vendor!;
+
+    const pedido = await prisma.pedido.findFirst({
+      where: { id, vendor_id: vendor.id }
+    });
+
+    if (!pedido) {
+      res.status(404).json({ error: 'Pedido no encontrado' });
+      return;
+    }
+
+    await prisma.$transaction([
+      prisma.credencial.updateMany({
+        where: { pedido_id: id },
+        data: { pedido_id: null, asignada_a: null, disponible: true }
+      }),
+      prisma.pedido.delete({ where: { id } })
+    ]);
+
+    res.json({ message: 'Pedido eliminado correctamente' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error eliminando pedido' });
+  }
+});
+
 // ═══════════════════════════════════════════
 // PERFIL
 // ═══════════════════════════════════════════
@@ -764,6 +796,31 @@ router.post('/pagos/comprobante', upload.single('comprobante'), async (req: Requ
   } catch (error) {
     console.error('Error enviando comprobante:', error);
     res.status(500).json({ error: 'Error enviando comprobante' });
+  }
+});
+
+/**
+ * DELETE /api/pagos/:id
+ * Elimina un pago del propio vendedor.
+ */
+router.delete('/pagos/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params as { id: string };
+    const vendor = req.vendor!;
+
+    const pago = await prisma.pago.findFirst({
+      where: { id, vendor_id: vendor.id }
+    });
+
+    if (!pago) {
+      res.status(404).json({ error: 'Pago no encontrado o no te pertenece' });
+      return;
+    }
+
+    await prisma.pago.delete({ where: { id } });
+    res.json({ message: 'Pago eliminado correctamente' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error eliminando pago' });
   }
 });
 

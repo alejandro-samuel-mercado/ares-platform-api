@@ -389,6 +389,39 @@ router.put('/vendors/:id/plan', async (req, res) => {
         res.status(500).json({ error: 'Error cambiando plan' });
     }
 });
+/**
+ * DELETE /api/admin/vendors/:id
+ * Elimina permanentemente a un vendedor y todo su historial.
+ */
+router.delete('/vendors/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const vendor = await prisma_1.default.vendor.findUnique({ where: { id } });
+        if (!vendor) {
+            res.status(404).json({ error: 'Vendedor no encontrado' });
+            return;
+        }
+        // Al no existir cascade delete nativo, debemos limpiar las tablas hijas.
+        await prisma_1.default.$transaction([
+            prisma_1.default.miServicio.deleteMany({ where: { vendor_id: id } }),
+            prisma_1.default.pedido.deleteMany({ where: { vendor_id: id } }),
+            prisma_1.default.pago.deleteMany({ where: { vendor_id: id } }),
+            prisma_1.default.clickMarketplace.deleteMany({ where: { vendor_id: id } }),
+            // Liberar las credenciales que el vendor tenía asignadas
+            prisma_1.default.credencial.updateMany({
+                where: { asignada_a: id },
+                data: { asignada_a: null, disponible: true }
+            }),
+            // Finalmente borrar el vendedor
+            prisma_1.default.vendor.delete({ where: { id } })
+        ]);
+        res.json({ message: `Vendedor ${vendor.alias} eliminado permanentemente` });
+    }
+    catch (error) {
+        console.error('Error eliminando vendedor:', error);
+        res.status(500).json({ error: 'Error eliminando vendedor' });
+    }
+});
 // ═══════════════════════════════════════════
 // GESTIÓN DE PLANES
 // ═══════════════════════════════════════════
@@ -433,6 +466,30 @@ router.put('/planes/:id', async (req, res) => {
     }
     catch (error) {
         res.status(500).json({ error: 'Error actualizando plan' });
+    }
+});
+/**
+ * DELETE /api/admin/planes/:id
+ * Elimina un plan si no tiene dependencias.
+ */
+router.delete('/planes/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const vendorsCount = await prisma_1.default.vendor.count({ where: { plan_id: id } });
+        if (vendorsCount > 0) {
+            res.status(400).json({ error: 'Este plan tiene vendedores asociados. Cambia a los vendedores de plan o desactiva el plan editándolo.' });
+            return;
+        }
+        const pagosCount = await prisma_1.default.pago.count({ where: { plan_id: id } });
+        if (pagosCount > 0) {
+            res.status(400).json({ error: 'Este plan tiene un historial de pagos. Te recomendamos desactivarlo en vez de eliminarlo.' });
+            return;
+        }
+        await prisma_1.default.plan.delete({ where: { id } });
+        res.json({ message: 'Plan eliminado correctamente' });
+    }
+    catch (error) {
+        res.status(500).json({ error: 'Error eliminando plan' });
     }
 });
 // ═══════════════════════════════════════════
@@ -790,6 +847,20 @@ router.post('/pagos/:id/reject', async (req, res) => {
         res.status(500).json({ error: 'Error rechazando pago' });
     }
 });
+/**
+ * DELETE /api/admin/pagos/:id
+ * Elimina un registro de pago permanentemente.
+ */
+router.delete('/pagos/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await prisma_1.default.pago.delete({ where: { id } });
+        res.json({ message: 'Pago eliminado correctamente' });
+    }
+    catch (error) {
+        res.status(500).json({ error: 'Error eliminando pago' });
+    }
+});
 // ═══════════════════════════════════════════
 // GESTIÓN DE PARTIDOS
 // ═══════════════════════════════════════════
@@ -919,12 +990,20 @@ router.put('/ajustes', cloudinary_1.upload.any(), async (req, res) => {
         const allowedFields = [
             'nombre_plataforma', 'tigo_money_numero', 'texto_legal',
             'noticia_global', 'whatsapp_soporte', 'qr_cobro_url', 'logo_url',
-            'qr_cobro_bob', 'qr_cobro_usd', 'tasa_cambio_bob'
+            'qr_cobro_bob', 'qr_cobro_usd', 'tasa_cambio_bob',
+            'watermark_enabled', 'watermark_type', 'watermark_text', 'watermark_opacity'
         ];
         allowedFields.forEach(field => {
             if (req.body[field] !== undefined) {
-                if (field === 'tasa_cambio_bob') {
-                    data[field] = parseFloat(req.body[field]) || 6.96;
+                if (field === 'tasa_cambio_bob' || field === 'watermark_opacity') {
+                    data[field] = parseFloat(req.body[field]);
+                    if (field === 'tasa_cambio_bob' && isNaN(data[field]))
+                        data[field] = 6.96;
+                    if (field === 'watermark_opacity' && isNaN(data[field]))
+                        data[field] = 0.5;
+                }
+                else if (field === 'watermark_enabled') {
+                    data[field] = req.body[field] === 'true' || req.body[field] === true;
                 }
                 else {
                     data[field] = req.body[field];
@@ -946,6 +1025,9 @@ router.put('/ajustes', cloudinary_1.upload.any(), async (req, res) => {
                     data.qr_cobro_usd = filePath;
                 if (file.fieldname === 'logo') {
                     data.logo_url = filePath;
+                }
+                if (file.fieldname === 'watermark_archivo') {
+                    data.watermark_image_url = filePath;
                 }
             });
         }
@@ -1146,6 +1228,26 @@ router.patch('/pedidos/:id', async (req, res) => {
     }
     catch (error) {
         res.status(500).json({ error: 'Error actualizando pedido' });
+    }
+});
+/**
+ * DELETE /api/admin/pedidos/:id
+ * Elimina un pedido y libera sus credenciales.
+ */
+router.delete('/pedidos/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await prisma_1.default.$transaction([
+            prisma_1.default.credencial.updateMany({
+                where: { pedido_id: id },
+                data: { pedido_id: null, asignada_a: null, disponible: true }
+            }),
+            prisma_1.default.pedido.delete({ where: { id } })
+        ]);
+        res.json({ message: 'Pedido eliminado correctamente' });
+    }
+    catch (error) {
+        res.status(500).json({ error: 'Error eliminando pedido' });
     }
 });
 /**

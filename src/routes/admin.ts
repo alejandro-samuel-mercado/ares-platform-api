@@ -389,6 +389,42 @@ router.put('/vendors/:id/plan', async (req: Request, res: Response): Promise<voi
   }
 });
 
+/**
+ * DELETE /api/admin/vendors/:id
+ * Elimina permanentemente a un vendedor y todo su historial.
+ */
+router.delete('/vendors/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params as { id: string };
+
+    const vendor = await prisma.vendor.findUnique({ where: { id } });
+    if (!vendor) {
+      res.status(404).json({ error: 'Vendedor no encontrado' });
+      return;
+    }
+
+    // Al no existir cascade delete nativo, debemos limpiar las tablas hijas.
+    await prisma.$transaction([
+      prisma.miServicio.deleteMany({ where: { vendor_id: id } }),
+      prisma.pedido.deleteMany({ where: { vendor_id: id } }),
+      prisma.pago.deleteMany({ where: { vendor_id: id } }),
+      prisma.clickMarketplace.deleteMany({ where: { vendor_id: id } }),
+      // Liberar las credenciales que el vendor tenía asignadas
+      prisma.credencial.updateMany({ 
+        where: { asignada_a: id }, 
+        data: { asignada_a: null, disponible: true } 
+      }),
+      // Finalmente borrar el vendedor
+      prisma.vendor.delete({ where: { id } })
+    ]);
+
+    res.json({ message: `Vendedor ${vendor.alias} eliminado permanentemente` });
+  } catch (error) {
+    console.error('Error eliminando vendedor:', error);
+    res.status(500).json({ error: 'Error eliminando vendedor' });
+  }
+});
+
 // ═══════════════════════════════════════════
 // GESTIÓN DE PLANES
 // ═══════════════════════════════════════════
@@ -433,6 +469,33 @@ router.put('/planes/:id', async (req: Request, res: Response): Promise<void> => 
     res.json(plan);
   } catch (error) {
     res.status(500).json({ error: 'Error actualizando plan' });
+  }
+});
+
+/**
+ * DELETE /api/admin/planes/:id
+ * Elimina un plan si no tiene dependencias.
+ */
+router.delete('/planes/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params as { id: string };
+
+    const vendorsCount = await prisma.vendor.count({ where: { plan_id: id } });
+    if (vendorsCount > 0) {
+      res.status(400).json({ error: 'Este plan tiene vendedores asociados. Cambia a los vendedores de plan o desactiva el plan editándolo.' });
+      return;
+    }
+    
+    const pagosCount = await prisma.pago.count({ where: { plan_id: id } });
+    if (pagosCount > 0) {
+      res.status(400).json({ error: 'Este plan tiene un historial de pagos. Te recomendamos desactivarlo en vez de eliminarlo.' });
+      return;
+    }
+
+    await prisma.plan.delete({ where: { id } });
+    res.json({ message: 'Plan eliminado correctamente' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error eliminando plan' });
   }
 });
 
@@ -819,6 +882,20 @@ router.post('/pagos/:id/reject', async (req: Request, res: Response): Promise<vo
   }
 });
 
+/**
+ * DELETE /api/admin/pagos/:id
+ * Elimina un registro de pago permanentemente.
+ */
+router.delete('/pagos/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params as { id: string };
+    await prisma.pago.delete({ where: { id } });
+    res.json({ message: 'Pago eliminado correctamente' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error eliminando pago' });
+  }
+});
+
 // ═══════════════════════════════════════════
 // GESTIÓN DE PARTIDOS
 // ═══════════════════════════════════════════
@@ -1202,6 +1279,28 @@ router.patch('/pedidos/:id', async (req: Request, res: Response): Promise<void> 
     res.json(pedido);
   } catch (error) {
     res.status(500).json({ error: 'Error actualizando pedido' });
+  }
+});
+
+/**
+ * DELETE /api/admin/pedidos/:id
+ * Elimina un pedido y libera sus credenciales.
+ */
+router.delete('/pedidos/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params as { id: string };
+    
+    await prisma.$transaction([
+      prisma.credencial.updateMany({
+        where: { pedido_id: id },
+        data: { pedido_id: null, asignada_a: null, disponible: true }
+      }),
+      prisma.pedido.delete({ where: { id } })
+    ]);
+    
+    res.json({ message: 'Pedido eliminado correctamente' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error eliminando pedido' });
   }
 });
 
