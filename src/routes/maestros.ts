@@ -49,6 +49,26 @@ router.put('/plataformas/:id', async (req: Request, res: Response) => {
     }
 });
 
+// Eliminar plataforma
+router.delete('/plataformas/:id', async (req: Request, res: Response) => {
+    try {
+        const id = req.params.id as string;
+        await prisma.plataforma.delete({ where: { id } });
+        res.json({ success: true });
+    } catch (err) {
+        // Fallback to soft-delete if relations prevent hard delete
+        try {
+            await prisma.plataforma.update({
+                where: { id: req.params.id },
+                data: { activo: false }
+            });
+            res.json({ success: true, softDelete: true });
+        } catch (e) {
+            res.status(500).json({ error: 'Error al eliminar plataforma' });
+        }
+    }
+});
+
 /**
  * ─────────────────────────────────────────────────────────────────────────────
  * RUTAS DE CATEGORÍAS
@@ -97,6 +117,25 @@ router.put('/categorias/:id', async (req: Request, res: Response) => {
         res.json(data);
     } catch (err) {
         res.status(500).json({ error: 'Error al actualizar categoría' });
+    }
+});
+
+// Eliminar categoría
+router.delete('/categorias/:id', async (req: Request, res: Response) => {
+    try {
+        const id = req.params.id as string;
+        await prisma.categoria.delete({ where: { id } });
+        res.json({ success: true });
+    } catch (err) {
+        try {
+            await prisma.categoria.update({
+                where: { id: req.params.id },
+                data: { activo: false }
+            });
+            res.json({ success: true, softDelete: true });
+        } catch (e) {
+            res.status(500).json({ error: 'Error al eliminar categoría' });
+        }
     }
 });
 
