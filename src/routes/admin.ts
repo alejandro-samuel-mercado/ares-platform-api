@@ -517,7 +517,18 @@ router.get('/servicios', async (_req: Request, res: Response): Promise<void> => 
       orderBy: { nombre: 'asc' },
     });
     res.json(servicios.map(s => ({
-      ...s,
+      id: s.id,
+      nombre: s.nombre,
+      logo_url: s.logo_url,
+      descripcion_base: s.descripcion_base,
+      precio_admin: s.precio_admin,
+      precio_sugerido: s.precio_sugerido,
+      categoria: s.categoria,
+      es_iptv_propio: s.es_iptv_propio,
+      estado_actual: s.estado_actual,
+      nota_estado: s.nota_estado,
+      activo: s.activo,
+      proveedor_id: s.proveedor_id,
       proveedor_alias: s.proveedor?.alias || 'SISTEMA',
       proveedor_nombre: s.proveedor?.nombre || 'Plataforma Ares'
     })));
@@ -594,6 +605,12 @@ router.put('/servicios/:id', upload.single('logo'), async (req: Request, res: Re
 router.delete('/servicios/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params as { id: string };
+    
+    if (!id || id === 'undefined' || id === 'null') {
+      res.status(400).json({ error: 'ID de servicio no válido' });
+      return;
+    }
+
     console.log(`Soft-deleting service ID: ${id}`);
     await prisma.servicioBase.update({
       where: { id },
