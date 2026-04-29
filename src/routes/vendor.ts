@@ -101,9 +101,19 @@ router.get('/mis_servicios', async (req: Request, res: Response): Promise<void> 
         where: { servicio_id: ms.servicio_id, disponible: true, asignada_a: null }
       });
       return { 
-        ...ms, 
+        id: ms.id,
+        vendor_id: ms.vendor_id,
+        servicio_id: ms.servicio_id,
+        precio_venta: ms.precio_venta,
+        activo: ms.activo,
         stock,
-        servicio: { ...ms.servicio, stock }
+        servicio: { 
+          id: ms.servicio.id,
+          nombre: ms.servicio.nombre,
+          logo_url: ms.servicio.logo_url,
+          categoria: ms.servicio.categoria,
+          stock 
+        }
       };
     }));
 

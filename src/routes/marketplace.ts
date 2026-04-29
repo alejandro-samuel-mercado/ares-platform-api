@@ -77,6 +77,7 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
         categoria: s.categoria,
         activo: s.activo,
         proveedor_id: s.proveedor_id,
+        proveedor: s.proveedor,
         stock
       };
     }));
@@ -133,6 +134,11 @@ router.get('/mine', planGuard('Proveedor'), async (req: Request, res: Response):
   try {
     const servicios = await prisma.servicioBase.findMany({
       where: { proveedor_id: req.vendor!.id },
+      include: {
+        proveedor: {
+          select: { nombre: true, alias: true, whatsapp: true, logo_url: true, rating: true }
+        }
+      },
       orderBy: { nombre: 'asc' }
     });
 
@@ -156,6 +162,7 @@ router.get('/mine', planGuard('Proveedor'), async (req: Request, res: Response):
         categoria: s.categoria,
         activo: s.activo,
         proveedor_id: s.proveedor_id,
+        proveedor: s.proveedor,
         stock: available, 
         total_credenciales: total, 
         leads 
