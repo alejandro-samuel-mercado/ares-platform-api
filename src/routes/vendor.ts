@@ -60,7 +60,18 @@ router.get('/servicios_base', async (req: Request, res: Response): Promise<void>
       const stock = await prisma.credencial.count({
         where: { servicio_id: s.id, disponible: true, asignada_a: null }
       });
-      return { ...s, stock };
+      return {
+        id: s.id,
+        nombre: s.nombre,
+        descripcion_base: s.descripcion_base,
+        precio_admin: s.precio_admin,
+        precio_sugerido: s.precio_sugerido,
+        logo_url: s.logo_url,
+        categoria: s.categoria,
+        activo: s.activo,
+        proveedor_id: s.proveedor_id,
+        stock
+      };
     }));
 
     res.json(withStock);

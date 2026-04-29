@@ -7,13 +7,13 @@
  * - Gestionar credenciales para sus servicios.
  */
 
-import { Router, Request, Response } from 'express';
+import { Request, Response, Router } from 'express';
 import prisma from '../lib/prisma';
 import { planGuard } from '../middleware/planGuard';
 
-import { upload, getFileUrl } from '../lib/cloudinary';
+import { getFileUrl, upload } from '../lib/cloudinary';
 
-const router = Router();
+const router:Router = Router();
 
 // Ruta exenta de guard de Proveedor para que los compradores puedan ver el QR
 router.get('/proveedor/:id/pagos', async (req: Request, res: Response): Promise<void> => {
@@ -67,7 +67,18 @@ router.get('/', async (_req: Request, res: Response): Promise<void> => {
       const stock = await prisma.credencial.count({
         where: { servicio_id: s.id, disponible: true, asignada_a: null }
       });
-      return { ...s, stock };
+      return {
+        id: s.id,
+        nombre: s.nombre,
+        descripcion_base: s.descripcion_base,
+        precio_admin: s.precio_admin,
+        precio_sugerido: s.precio_sugerido,
+        logo_url: s.logo_url,
+        categoria: s.categoria,
+        activo: s.activo,
+        proveedor_id: s.proveedor_id,
+        stock
+      };
     }));
 
     res.json(withStock);
@@ -135,7 +146,20 @@ router.get('/mine', planGuard('Proveedor'), async (req: Request, res: Response):
       const leads = await prisma.miServicio.count({
         where: { servicio_id: s.id }
       });
-      return { ...s, stock: available, total_credenciales: total, leads };
+      return {
+        id: s.id,
+        nombre: s.nombre,
+        descripcion_base: s.descripcion_base,
+        precio_admin: s.precio_admin,
+        precio_sugerido: s.precio_sugerido,
+        logo_url: s.logo_url,
+        categoria: s.categoria,
+        activo: s.activo,
+        proveedor_id: s.proveedor_id,
+        stock: available, 
+        total_credenciales: total, 
+        leads 
+      };
     }));
 
     res.json(withStock);
