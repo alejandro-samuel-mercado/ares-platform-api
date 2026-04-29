@@ -558,6 +558,17 @@ router.post('/servicios', upload.single('logo'), async (req: Request, res: Respo
     if (data.activo !== undefined) data.activo = String(data.activo) === 'true';
     if (data.es_iptv_propio !== undefined) data.es_iptv_propio = String(data.es_iptv_propio) === 'true';
 
+    // Map frontend fields to Prisma fields if necessary
+    if (data.descripcion && !data.descripcion_base) {
+      data.descripcion_base = data.descripcion;
+      delete data.descripcion;
+    }
+    if (data.precio && !data.precio_sugerido) {
+      data.precio_sugerido = parseFloat(data.precio);
+      data.precio_admin = parseFloat(data.precio);
+      delete data.precio;
+    }
+
     const servicio = await prisma.servicioBase.create({ data });
     res.status(201).json(servicio);
   } catch (error) {
@@ -586,6 +597,17 @@ router.put('/servicios/:id', upload.single('logo'), async (req: Request, res: Re
     
     if (data.activo !== undefined) data.activo = String(data.activo) === 'true';
     if (data.es_iptv_propio !== undefined) data.es_iptv_propio = String(data.es_iptv_propio) === 'true';
+
+    // Map frontend fields to Prisma fields if necessary
+    if (data.descripcion && !data.descripcion_base) {
+      data.descripcion_base = data.descripcion;
+      delete data.descripcion;
+    }
+    if (data.precio && !data.precio_sugerido) {
+      data.precio_sugerido = parseFloat(data.precio);
+      data.precio_admin = parseFloat(data.precio);
+      delete data.precio;
+    }
 
     const servicio = await prisma.servicioBase.update({
       where: { id },
