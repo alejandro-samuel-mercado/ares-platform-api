@@ -27,7 +27,20 @@ const storage = useCloudinary
         cloudinary: cloudinary_1.v2,
         params: {
             folder: 'ares/banco_imagenes',
-            allowed_formats: ['jpg', 'png', 'jpeg', 'webp'],
+            allowed_formats: ['jpg', 'png', 'jpeg', 'webp', 'pdf', 'svg', 'gif', 'JPG', 'PNG', 'JPEG', 'WEBP', 'PDF', 'SVG', 'GIF'],
+            format: async (req, file) => {
+                const ext = path_1.default.extname(file.originalname).toLowerCase().replace('.', '');
+                return ['jpg', 'png', 'jpeg', 'webp', 'pdf', 'svg', 'gif'].includes(ext)
+                    ? (ext === 'jpg' ? 'jpeg' : ext)
+                    : 'jpeg';
+            },
+            public_id: (req, file) => {
+                const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+                const cleanName = path_1.default.basename(file.originalname, path_1.default.extname(file.originalname))
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]/g, '_');
+                return `file-${uniqueSuffix}-${cleanName}`;
+            }
         },
     })
     : multer_1.default.diskStorage({
@@ -36,11 +49,16 @@ const storage = useCloudinary
         },
         filename: (req, file, cb) => {
             const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-            const ext = path_1.default.extname(file.originalname);
+            const ext = path_1.default.extname(file.originalname).toLowerCase();
             cb(null, file.fieldname + '-' + uniqueSuffix + ext);
         }
     });
-exports.upload = (0, multer_1.default)({ storage });
+exports.upload = (0, multer_1.default)({
+    storage,
+    limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB limit
+    }
+});
 const getFileUrl = (file) => {
     if (!file) {
         console.log('[CLOUDINARY] getFileUrl: No file provided');

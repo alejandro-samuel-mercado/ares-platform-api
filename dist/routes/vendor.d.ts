@@ -12,6 +12,7 @@
  * Todas las rutas requieren autenticación + suscripción activa.
  * Todas las queries filtran por vendor_id del JWT (multi-tenant).
  */
-declare const router: import("express-serve-static-core").Router;
+import { Router } from 'express';
+declare const router: Router;
 export default router;
 //# sourceMappingURL=vendor.d.ts.map

@@ -51,10 +51,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
-const prisma_1 = __importDefault(require("../lib/prisma"));
-const onesignal_1 = require("../lib/onesignal");
-const watermark_1 = require("../lib/watermark");
 const cloudinary_1 = require("../lib/cloudinary");
+const onesignal_1 = require("../lib/onesignal");
+const prisma_1 = __importDefault(require("../lib/prisma"));
+const watermark_1 = require("../lib/watermark");
 const router = (0, express_1.Router)();
 // ═══════════════════════════════════════════
 // PLANES
@@ -92,7 +92,18 @@ router.get('/servicios_base', async (req, res) => {
             const stock = await prisma_1.default.credencial.count({
                 where: { servicio_id: s.id, disponible: true, asignada_a: null }
             });
-            return { ...s, stock };
+            return {
+                id: s.id,
+                nombre: s.nombre,
+                descripcion_base: s.descripcion_base,
+                precio_admin: s.precio_admin,
+                precio_sugerido: s.precio_sugerido,
+                logo_url: s.logo_url,
+                categoria: s.categoria,
+                activo: s.activo,
+                proveedor_id: s.proveedor_id,
+                stock
+            };
         }));
         res.json(withStock);
     }
@@ -119,9 +130,19 @@ router.get('/mis_servicios', async (req, res) => {
                 where: { servicio_id: ms.servicio_id, disponible: true, asignada_a: null }
             });
             return {
-                ...ms,
+                id: ms.id,
+                vendor_id: ms.vendor_id,
+                servicio_id: ms.servicio_id,
+                precio_venta: ms.precio_venta,
+                activo: ms.activo,
                 stock,
-                servicio: { ...ms.servicio, stock }
+                servicio: {
+                    id: ms.servicio.id,
+                    nombre: ms.servicio.nombre,
+                    logo_url: ms.servicio.logo_url,
+                    categoria: ms.servicio.categoria,
+                    stock
+                }
             };
         }));
         res.json(withStock);
@@ -542,14 +563,11 @@ router.delete('/pedidos/:id', async (req, res) => {
  */
 router.get('/perfil', async (req, res) => {
     try {
-        const { PrismaClient } = await Promise.resolve().then(() => __importStar(require('@prisma/client')));
-        const localPrisma = new PrismaClient();
-        // Forzamos una lectura fresca de la DB para evitar datos cacheados en req.vendor
-        const vendor = await localPrisma.vendor.findUnique({
+        // Lectura fresca usando el prisma global (con pool de conexiones)
+        const vendor = await prisma_1.default.vendor.findUnique({
             where: { id: req.vendor.id },
             include: { plan: true }
         });
-        await localPrisma.$disconnect();
         if (!vendor) {
             res.status(404).json({ error: 'Vendor no encontrado' });
             return;
@@ -571,6 +589,7 @@ router.get('/perfil', async (req, res) => {
             texto_limite: vendor.plan?.texto_limite,
             plan_id: vendor.plan_id,
             role: vendor.role,
+            es_colaborador: vendor.es_colaborador || false,
             status: vendor.status,
             rating: vendor.rating,
             biografia: vendor.biografia,
@@ -582,10 +601,6 @@ router.get('/perfil', async (req, res) => {
             fecha_registro: vendor.fecha_registro,
             fecha_vencimiento: vendor.fecha_vencimiento,
         };
-        console.log('[API] GET /perfil fresco:', {
-            qr_bob: responseData.qr_bob,
-            tigo_money: responseData.tigo_money
-        });
         res.json(responseData);
     }
     catch (error) {
@@ -603,20 +618,16 @@ router.put('/perfil', cloudinary_1.upload.fields([
     { name: 'qr_usd', maxCount: 1 }
 ]), async (req, res) => {
     try {
-        const { PrismaClient } = await Promise.resolve().then(() => __importStar(require('@prisma/client')));
-        const localPrisma = new PrismaClient();
         const vendor = req.vendor;
-        console.log('[API] Perfil Update for:', vendor.alias);
         const { whatsapp, alias, nombre, logo_url, logo_cloudinary_id, biografia, whatsapp_api_enabled, whatsapp_api_token, qr_bob_url, qr_usd_url, tigo_money } = req.body;
         const files = req.files;
         // Obtener URLs finales (Archivo local > URL manual)
         const finalLogoUrl = (files?.logo && files.logo[0]) ? (0, cloudinary_1.getFileUrl)(files.logo[0]) : logo_url;
         const finalQrBobUrl = (files?.qr_bob && files.qr_bob[0]) ? (0, cloudinary_1.getFileUrl)(files.qr_bob[0]) : qr_bob_url;
         const finalQrUsdUrl = (files?.qr_usd && files.qr_usd[0]) ? (0, cloudinary_1.getFileUrl)(files.qr_usd[0]) : qr_usd_url;
-        console.log('[API] Fields Resolved:', { finalLogoUrl, finalQrBobUrl, finalQrUsdUrl, whatsapp_api_enabled, tigo_money });
         // Verificar que el nuevo alias no esté en uso
         if (alias && alias !== vendor.alias) {
-            const existing = await localPrisma.vendor.findFirst({
+            const existing = await prisma_1.default.vendor.findFirst({
                 where: { alias: alias.toLowerCase(), id: { not: vendor.id } },
             });
             if (existing) {
@@ -642,13 +653,11 @@ router.put('/perfil', cloudinary_1.upload.fields([
             ...(finalQrUsdUrl !== undefined && { qr_usd: finalQrUsdUrl }),
             ...(tigo_money !== undefined && { tigo_money }),
         };
-        console.log('[API] Prisma Update Data:', updateData);
-        const updated = await localPrisma.vendor.update({
+        const updated = await prisma_1.default.vendor.update({
             where: { id: vendor.id },
             data: updateData,
             include: { plan: true },
         });
-        await localPrisma.$disconnect();
         res.json({
             message: 'Perfil actualizado',
             vendor: {

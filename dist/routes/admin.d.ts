@@ -13,6 +13,7 @@
  *
  * Todas las rutas requieren rol SUPERADMIN.
  */
-declare const router: import("express-serve-static-core").Router;
+import { Router } from 'express';
+declare const router: Router;
 export default router;
 //# sourceMappingURL=admin.d.ts.map

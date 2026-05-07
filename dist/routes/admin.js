@@ -51,12 +51,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const express_1 = require("express");
-const prisma_1 = __importDefault(require("../lib/prisma"));
+const fs_1 = __importDefault(require("fs"));
 const cloudinary_1 = require("../lib/cloudinary");
 const onesignal_1 = require("../lib/onesignal");
-const fs_1 = __importDefault(require("fs"));
-const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const prisma_1 = __importDefault(require("../lib/prisma"));
 const router = (0, express_1.Router)();
 const LOG_FILE = '/tmp/ares_debug_admin.log';
 // Logger para depurar problemas de persistencia
@@ -510,7 +510,18 @@ router.get('/servicios', async (_req, res) => {
             orderBy: { nombre: 'asc' },
         });
         res.json(servicios.map(s => ({
-            ...s,
+            id: s.id,
+            nombre: s.nombre,
+            logo_url: s.logo_url,
+            descripcion_base: s.descripcion_base,
+            precio_admin: s.precio_admin,
+            precio_sugerido: s.precio_sugerido,
+            categoria: s.categoria,
+            es_iptv_propio: s.es_iptv_propio,
+            estado_actual: s.estado_actual,
+            nota_estado: s.nota_estado,
+            activo: s.activo,
+            proveedor_id: s.proveedor_id,
             proveedor_alias: s.proveedor?.alias || 'SISTEMA',
             proveedor_nombre: s.proveedor?.nombre || 'Plataforma Ares'
         })));
@@ -530,11 +541,32 @@ router.post('/servicios', cloudinary_1.upload.single('logo'), async (req, res) =
         if (file) {
             data.logo_url = (0, cloudinary_1.getFileUrl)(file);
         }
+        // Convert types from FormData (strings) to Prisma types
+        if (data.precio_admin)
+            data.precio_admin = parseFloat(data.precio_admin);
+        if (data.precio_sugerido)
+            data.precio_sugerido = parseFloat(data.precio_sugerido);
+        else
+            data.precio_sugerido = data.precio_admin || 0; // Fallback if missing
+        if (data.activo !== undefined)
+            data.activo = String(data.activo) === 'true';
+        if (data.es_iptv_propio !== undefined)
+            data.es_iptv_propio = String(data.es_iptv_propio) === 'true';
+        // Map frontend fields to Prisma fields if necessary
+        if (data.descripcion && !data.descripcion_base) {
+            data.descripcion_base = data.descripcion;
+            delete data.descripcion;
+        }
+        if (data.precio && !data.precio_sugerido) {
+            data.precio_sugerido = parseFloat(data.precio);
+            data.precio_admin = parseFloat(data.precio);
+            delete data.precio;
+        }
         const servicio = await prisma_1.default.servicioBase.create({ data });
         res.status(201).json(servicio);
     }
     catch (error) {
-        console.error(error);
+        console.error("Error creating service:", error);
         res.status(500).json({ error: 'Error creando servicio' });
     }
 });
@@ -548,7 +580,26 @@ router.put('/servicios/:id', cloudinary_1.upload.single('logo'), async (req, res
         const data = { ...req.body };
         const file = req.file;
         if (file) {
-            data.logo_url = file.path;
+            data.logo_url = (0, cloudinary_1.getFileUrl)(file);
+        }
+        // Convert types from FormData (strings) to Prisma types
+        if (data.precio_admin)
+            data.precio_admin = parseFloat(data.precio_admin);
+        if (data.precio_sugerido)
+            data.precio_sugerido = parseFloat(data.precio_sugerido);
+        if (data.activo !== undefined)
+            data.activo = String(data.activo) === 'true';
+        if (data.es_iptv_propio !== undefined)
+            data.es_iptv_propio = String(data.es_iptv_propio) === 'true';
+        // Map frontend fields to Prisma fields if necessary
+        if (data.descripcion && !data.descripcion_base) {
+            data.descripcion_base = data.descripcion;
+            delete data.descripcion;
+        }
+        if (data.precio && !data.precio_sugerido) {
+            data.precio_sugerido = parseFloat(data.precio);
+            data.precio_admin = parseFloat(data.precio);
+            delete data.precio;
         }
         const servicio = await prisma_1.default.servicioBase.update({
             where: { id },
@@ -557,7 +608,7 @@ router.put('/servicios/:id', cloudinary_1.upload.single('logo'), async (req, res
         res.json(servicio);
     }
     catch (error) {
-        console.error(error);
+        console.error("Error updating service:", error);
         res.status(500).json({ error: 'Error actualizando servicio' });
     }
 });
@@ -568,6 +619,10 @@ router.put('/servicios/:id', cloudinary_1.upload.single('logo'), async (req, res
 router.delete('/servicios/:id', async (req, res) => {
     try {
         const { id } = req.params;
+        if (!id || id === 'undefined' || id === 'null') {
+            res.status(400).json({ error: 'ID de servicio no válido' });
+            return;
+        }
         console.log(`Soft-deleting service ID: ${id}`);
         await prisma_1.default.servicioBase.update({
             where: { id },
@@ -958,6 +1013,21 @@ router.put('/partidos/:id', cloudinary_1.upload.fields([
     catch (error) {
         console.error(error);
         res.status(500).json({ error: 'Error actualizando partido' });
+    }
+});
+/**
+ * DELETE /api/admin/partidos/:id
+ * Elimina un partido permanentemente.
+ */
+router.delete('/partidos/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await prisma_1.default.partido.delete({ where: { id } });
+        res.json({ message: 'Partido eliminado correctamente' });
+    }
+    catch (error) {
+        console.error('Error eliminando partido:', error);
+        res.status(500).json({ error: 'Error eliminando partido' });
     }
 });
 // ═══════════════════════════════════════════
