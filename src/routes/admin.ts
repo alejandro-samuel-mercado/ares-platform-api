@@ -681,7 +681,7 @@ router.get('/imagenes', async (_req: Request, res: Response): Promise<void> => {
 
 router.post('/imagenes', upload.single('imagen'), async (req: Request, res: Response): Promise<void> => {
   try {
-    const { titulo, etiquetas, servicio_id } = req.body;
+    const { titulo, etiquetas, servicio_id, categoria } = req.body;
     const file = req.file as any;
 
     if (!file) {
@@ -696,6 +696,7 @@ router.post('/imagenes', upload.single('imagen'), async (req: Request, res: Resp
         url_base: getFileUrl(file),
         etiquetas: etiquetas || '[]',
         servicio_id: servicio_id || null,
+        categoria: categoria || 'FLYER',
       },
       include: {
         servicio: {
@@ -718,13 +719,14 @@ router.post('/imagenes', upload.single('imagen'), async (req: Request, res: Resp
 router.put('/imagenes/:id', upload.single('imagen'), async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params as { id: string };
-    const { titulo, etiquetas, servicio_id } = req.body;
+    const { titulo, etiquetas, servicio_id, categoria } = req.body;
     const file = req.file as any;
 
     const data: any = {
       ...(titulo !== undefined && { titulo }),
       ...(etiquetas !== undefined && { etiquetas }),
       ...(servicio_id !== undefined && { servicio_id: servicio_id || null }),
+      ...(categoria !== undefined && { categoria }),
     };
 
     if (file) {
