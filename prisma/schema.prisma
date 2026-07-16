@@ -27,6 +27,7 @@ model Vendor {
   whatsapp_api_enabled Boolean  @default(false)
   whatsapp_api_token   String?
   plan_id            String
+  app_config_id      String?  // Aplicación asignada (módulos + colores)
   fecha_registro     DateTime @default(now())
   fecha_vencimiento  DateTime
   status             String   @default("ACTIVE") // ACTIVE | SUSPENDED | EXPIRED | GUEST
@@ -39,6 +40,7 @@ model Vendor {
   tigo_money         String?  // Número de Tigo Money
 
   plan          Plan           @relation(fields: [plan_id], references: [id])
+  app_config    AppConfig?     @relation(fields: [app_config_id], references: [id])
   mis_servicios MiServicio[]
   pedidos       Pedido[]
   pagos         Pago[]
@@ -325,4 +327,28 @@ model ClickMarketplace {
   @@index([vendor_id])
   @@index([servicio_id])
   @@index([proveedor_id])
+}
+
+/// ──────────────────────────────────────────
+/// Modelo: AppConfig
+/// Configuración de aplicación/producto asignable a vendors.
+/// Define qué módulos del panel están activos y el tema de colores.
+/// ──────────────────────────────────────────
+model AppConfig {
+  id          String   @id @default(cuid())
+  nombre      String   @unique
+  descripcion String?
+
+  /// JSON array de módulo-keys habilitados
+  /// Ej: ["home","mensajes","flyers","catalogo","perfil"]
+  modulos_activos String @default("[]")
+
+  /// JSON object con variables CSS del tema
+  /// Ej: {"--color-primary":"#bb4812","--surface-base":"#0B0B0B",...}
+  colores String @default("{}")
+
+  activo    Boolean  @default(true)
+  creado_en DateTime @default(now())
+
+  vendors Vendor[]
 }

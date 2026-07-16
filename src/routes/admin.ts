@@ -179,7 +179,7 @@ router.get('/vendors', async (req: Request, res: Response): Promise<void> => {
 
     const vendors = await prisma.vendor.findMany({
       where: whereClause,
-      include: { plan: true },
+      include: { plan: true, app_config: true },
       orderBy: { fecha_registro: 'desc' },
     });
 
@@ -197,6 +197,8 @@ router.get('/vendors', async (req: Request, res: Response): Promise<void> => {
         whatsapp: v.whatsapp,
         plan: v.plan.nombre,
         plan_id: v.plan_id,
+        app_config_id: v.app_config_id,
+        app_config: v.app_config,
         status: v.status,
         role: v.role,
         es_colaborador: v.es_colaborador,
@@ -260,7 +262,7 @@ router.post('/vendors/:id/suspend', async (req: Request, res: Response): Promise
 router.put('/vendors/:id', async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params as { id: string };
-    const { nombre, alias, telefono, whatsapp, password } = req.body;
+    const { nombre, alias, telefono, whatsapp, password, app_config_id } = req.body;
 
     // Verificar que el alias no esté en uso por otro vendedor
     if (alias) {
@@ -281,11 +283,15 @@ router.put('/vendors/:id', async (req: Request, res: Response): Promise<void> =>
     if (password) {
       updateData.password_hash = await bcrypt.hash(password, 10);
     }
+    // app_config_id: null = sin app asignada (acceso completo)
+    if (app_config_id !== undefined) {
+      updateData.app_config_id = app_config_id || null;
+    }
 
     const updated = await prisma.vendor.update({
       where: { id },
       data: updateData,
-      include: { plan: true },
+      include: { plan: true, app_config: true },
     });
 
     res.json({ message: `Vendedor ${updated.alias} actualizado`, vendor: updated });
@@ -1607,7 +1613,7 @@ router.delete('/mensajes/:id', async (req: Request, res: Response): Promise<void
  */
 router.post('/vendors', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { nombre, alias, telefono, plan_id, password, whatsapp } = req.body;
+    const { nombre, alias, telefono, plan_id, password, whatsapp, app_config_id } = req.body;
 
     if (!nombre || !alias || !telefono || !plan_id || !password) {
       res.status(400).json({ error: 'nombre, alias, telefono, plan_id y password son requeridos' });
@@ -1650,6 +1656,7 @@ router.post('/vendors', async (req: Request, res: Response): Promise<void> => {
         fecha_vencimiento: vencimiento,
         status: 'ACTIVE',
         role: 'VENDOR',
+        ...(app_config_id ? { app_config_id } : {}),
       },
       include: { plan: true },
     });
@@ -1926,6 +1933,119 @@ router.post('/pedidos/:id/aprobar', async (req: Request, res: Response): Promise
   } catch (error) {
     console.error('Error aprobando pedido:', error);
     res.status(500).json({ error: 'Error aprobando pedido' });
+  }
+});
+
+// ═══════════════════════════════════════════
+// GESTIÓN DE APP CONFIGS
+// ═══════════════════════════════════════════
+
+/**
+ * GET /api/admin/app-configs
+ * Lista todas las aplicaciones (AppConfig) activas.
+ */
+router.get('/app-configs', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const apps = await prisma.appConfig.findMany({
+      orderBy: { creado_en: 'asc' },
+      include: { _count: { select: { vendors: true } } },
+    });
+    res.json(apps.map(a => ({
+      id: a.id,
+      nombre: a.nombre,
+      descripcion: a.descripcion,
+      modulos_activos: a.modulos_activos,
+      colores: a.colores,
+      activo: a.activo,
+      creado_en: a.creado_en,
+      vendors_count: (a as any)._count.vendors,
+    })));
+  } catch (error) {
+    res.status(500).json({ error: 'Error obteniendo aplicaciones' });
+  }
+});
+
+/**
+ * POST /api/admin/app-configs
+ * Crea una nueva AppConfig.
+ */
+router.post('/app-configs', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { nombre, descripcion, modulos_activos, colores } = req.body;
+    if (!nombre) {
+      res.status(400).json({ error: 'El nombre es requerido' });
+      return;
+    }
+    const app = await prisma.appConfig.create({
+      data: {
+        nombre: nombre.toUpperCase(),
+        descripcion: descripcion || null,
+        modulos_activos: typeof modulos_activos === 'string' ? modulos_activos : JSON.stringify(modulos_activos || []),
+        colores: typeof colores === 'string' ? colores : JSON.stringify(colores || {}),
+      },
+    });
+    res.status(201).json(app);
+  } catch (error: any) {
+    if (error?.code === 'P2002') {
+      res.status(409).json({ error: 'Ya existe una aplicación con ese nombre' });
+      return;
+    }
+    console.error('Error creando app-config:', error);
+    res.status(500).json({ error: 'Error creando aplicación' });
+  }
+});
+
+/**
+ * PUT /api/admin/app-configs/:id
+ * Actualiza una AppConfig existente.
+ */
+router.put('/app-configs/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params as { id: string };
+    const { nombre, descripcion, modulos_activos, colores, activo } = req.body;
+    const data: any = {};
+    if (nombre !== undefined) data.nombre = nombre.toUpperCase();
+    if (descripcion !== undefined) data.descripcion = descripcion;
+    if (modulos_activos !== undefined) {
+      data.modulos_activos = typeof modulos_activos === 'string' ? modulos_activos : JSON.stringify(modulos_activos);
+    }
+    if (colores !== undefined) {
+      data.colores = typeof colores === 'string' ? colores : JSON.stringify(colores);
+    }
+    if (activo !== undefined) data.activo = activo;
+
+    const app = await prisma.appConfig.update({ where: { id }, data });
+    res.json(app);
+  } catch (error: any) {
+    if (error?.code === 'P2002') {
+      res.status(409).json({ error: 'Ya existe una aplicación con ese nombre' });
+      return;
+    }
+    console.error('Error actualizando app-config:', error);
+    res.status(500).json({ error: 'Error actualizando aplicación' });
+  }
+});
+
+/**
+ * DELETE /api/admin/app-configs/:id
+ * Elimina una AppConfig. Si hay vendors asignados a ella, se les desasigna automáticamente.
+ */
+router.delete('/app-configs/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params as { id: string };
+
+    // Desasignar la aplicación de cualquier vendor que la tenga
+    await prisma.vendor.updateMany({
+      where: { app_config_id: id },
+      data: { app_config_id: null },
+    });
+
+    // Ahora sí se puede eliminar de forma segura
+    await prisma.appConfig.delete({ where: { id } });
+    res.json({ message: 'Aplicación eliminada correctamente' });
+  } catch (error) {
+    console.error('Error eliminando app-config:', error);
+    res.status(500).json({ error: 'Error eliminando aplicación' });
   }
 });
 

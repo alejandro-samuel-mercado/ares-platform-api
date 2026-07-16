@@ -17,6 +17,9 @@ const COLLAB_FULL_ACCESS = ['/imagenes', '/estrenos', '/partidos', '/mensajes', 
 // Modules where colaborador has READ-ONLY access
 const COLLAB_READONLY = ['/vendedores', '/dashboard'];
 
+// Modules ONLY for SUPERADMIN (not even colaboradores) — listed here for documentation
+// '/planes', '/servicios', '/credenciales', '/pagos', '/pedidos', '/ajustes', '/marketplace', '/backups', '/app-configs'
+
 export function colaboradorGuard(req: Request, res: Response, next: NextFunction): void {
   const vendor = req.vendor;
 

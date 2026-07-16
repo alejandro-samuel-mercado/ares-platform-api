@@ -589,7 +589,7 @@ router.get('/perfil', async (req: Request, res: Response): Promise<void> => {
     // Lectura fresca usando el prisma global (con pool de conexiones)
     const vendor = await prisma.vendor.findUnique({
       where: { id: req.vendor!.id },
-      include: { plan: true }
+      include: { plan: true, app_config: true }
     });
 
     if (!vendor) {
@@ -625,6 +625,17 @@ router.get('/perfil', async (req: Request, res: Response): Promise<void> => {
       tigo_money: (vendor as any).tigo_money,
       fecha_registro: vendor.fecha_registro,
       fecha_vencimiento: vendor.fecha_vencimiento,
+      // AppConfig: módulos habilitados y colores del tema
+      app_config: (vendor as any).app_config ? {
+        id: (vendor as any).app_config.id,
+        nombre: (vendor as any).app_config.nombre,
+        modulos_activos: (() => {
+          try { return JSON.parse((vendor as any).app_config.modulos_activos); } catch { return []; }
+        })(),
+        colores: (() => {
+          try { return JSON.parse((vendor as any).app_config.colores); } catch { return {}; }
+        })(),
+      } : null,
     };
     
     res.json(responseData);
