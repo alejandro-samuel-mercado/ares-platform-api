@@ -52,7 +52,7 @@ router.get('/planes', async (req: Request, res: Response): Promise<void> => {
 router.get('/servicios_base', async (req: Request, res: Response): Promise<void> => {
   try {
     const servicios = await prisma.servicioBase.findMany({
-      where: { activo: true },
+      where: { activo: true, app_config_id: req.vendor!.app_config_id || null },
       orderBy: { nombre: 'asc' },
     });
 
@@ -278,6 +278,7 @@ router.get('/imagenes', async (req: Request, res: Response): Promise<void> => {
     // Buscar imágenes: solo las vinculadas a los servicios activos del vendedor
     const imagenesRaw = await prisma.imagen.findMany({
       where: {
+        app_config_id: req.vendor!.app_config_id || null,
         activo: true,
         ...(etiqueta ? { etiquetas: { contains: etiqueta as string } } : {}),
         OR: [
@@ -365,7 +366,7 @@ router.get('/imagen/:id/download', async (req: Request, res: Response): Promise<
 router.get('/mensajes', async (req: Request, res: Response): Promise<void> => {
   try {
     const mensajes = await prisma.mensajeRapido.findMany({
-      where: { activo: true },
+      where: { activo: true, app_config_id: req.vendor!.app_config_id || null },
       orderBy: { orden: 'asc' },
     });
     res.json(mensajes);
@@ -385,7 +386,7 @@ router.get('/mensajes', async (req: Request, res: Response): Promise<void> => {
 router.get('/partidos', async (req: Request, res: Response): Promise<void> => {
   try {
     const { fecha } = req.query as { fecha?: string };
-    let whereClause: any = { activo: true };
+    let whereClause: any = { activo: true, app_config_id: req.vendor!.app_config_id || null };
 
     if (fecha === 'hoy') {
       const today = new Date();
@@ -534,7 +535,7 @@ router.get('/mis_credenciales', async (req: Request, res: Response): Promise<voi
 router.get('/pedidos', async (req: Request, res: Response): Promise<void> => {
   try {
     const pedidos = await prisma.pedido.findMany({
-      where: { vendor_id: req.vendor!.id },
+      where: { vendor_id: req.vendor!.id, app_config_id: req.vendor!.app_config_id || null },
       include: { servicio: { select: { nombre: true, logo_url: true, categoria: true } } },
       orderBy: { creado_en: 'desc' },
     });
@@ -942,11 +943,11 @@ router.get('/public/u/:alias', async (req: Request, res: Response): Promise<void
  * GET /api/estrenos
  * Lista los estrenos activos recientes del feed.
  */
-router.get('/estrenos', async (_req: Request, res: Response): Promise<void> => {
+router.get('/estrenos', async (req: Request, res: Response): Promise<void> => {
   try {
-    console.log('📡 HIT: GET /api/estrenos');
+    console.log('📡 HIT: GET /api/estrenos', req.vendor);
     const estrenos = await prisma.estreno.findMany({
-      where: { activo: true },
+      where: { activo: true, app_config_id: req.vendor!.app_config_id || null },
       orderBy: [{ fecha_estreno: 'desc' }, { creado_en: 'desc' }],
       take: 20,
     });

@@ -550,6 +550,7 @@ router.get('/servicios', async (_req: Request, res: Response): Promise<void> => 
 router.post('/servicios', upload.single('logo'), async (req: Request, res: Response): Promise<void> => {
   try {
     const data = { ...req.body };
+    if (data.app_config_id === '') data.app_config_id = null;
     const file = req.file as any;
     
     if (file) {
@@ -591,6 +592,7 @@ router.put('/servicios/:id', upload.single('logo'), async (req: Request, res: Re
   try {
     const { id } = req.params as { id: string };
     const data = { ...req.body };
+    if (data.app_config_id === '') data.app_config_id = null;
     const file = req.file as any;
 
     if (file) {
@@ -687,7 +689,7 @@ router.get('/imagenes', async (_req: Request, res: Response): Promise<void> => {
 
 router.post('/imagenes', upload.single('imagen'), async (req: Request, res: Response): Promise<void> => {
   try {
-    const { titulo, etiquetas, servicio_id, categoria } = req.body;
+    const { titulo, etiquetas, servicio_id, categoria, app_config_id } = req.body;
     const file = req.file as any;
 
     if (!file) {
@@ -703,6 +705,7 @@ router.post('/imagenes', upload.single('imagen'), async (req: Request, res: Resp
         etiquetas: etiquetas || '[]',
         servicio_id: servicio_id || null,
         categoria: categoria || 'FLYER',
+        app_config_id: app_config_id || null,
       },
       include: {
         servicio: {
@@ -725,7 +728,7 @@ router.post('/imagenes', upload.single('imagen'), async (req: Request, res: Resp
 router.put('/imagenes/:id', upload.single('imagen'), async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params as { id: string };
-    const { titulo, etiquetas, servicio_id, categoria } = req.body;
+    const { titulo, etiquetas, servicio_id, categoria, app_config_id } = req.body;
     const file = req.file as any;
 
     const data: any = {
@@ -733,6 +736,7 @@ router.put('/imagenes/:id', upload.single('imagen'), async (req: Request, res: R
       ...(etiquetas !== undefined && { etiquetas }),
       ...(servicio_id !== undefined && { servicio_id: servicio_id || null }),
       ...(categoria !== undefined && { categoria }),
+      ...(app_config_id !== undefined && { app_config_id: app_config_id || null }),
     };
 
     if (file) {
@@ -987,6 +991,7 @@ router.post('/partidos', upload.fields([
 ]), async (req: Request, res: Response): Promise<void> => {
   try {
     const data = { ...req.body };
+    if (data.app_config_id === '') data.app_config_id = null;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
 
     if (files['logo_local']) {
@@ -1034,6 +1039,7 @@ router.put('/partidos/:id', upload.fields([
   try {
     const { id } = req.params as { id: string };
     const data = { ...req.body };
+    if (data.app_config_id === '') data.app_config_id = null;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
 
     if (files['logo_local']) {
@@ -1559,7 +1565,7 @@ router.get('/mensajes', async (_req: Request, res: Response): Promise<void> => {
 
 router.post('/mensajes', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { titulo, template, orden } = req.body;
+    const { titulo, template, orden, app_config_id } = req.body;
     const mensaje = await prisma.mensajeRapido.create({
       data: {
         titulo,
